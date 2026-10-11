@@ -16,7 +16,7 @@ interface AuthGuardProps {
  * Redirects to /auth if user is not authenticated.
  *
  * `isAuthenticated` is derived from the verified session token, not from cached
- * localStorage state, so forging `settlex:user` / `settlex:publicKey` does not
+ * localStorage state, so forging `belay:user` / `belay:publicKey` does not
  * get past this guard. It is defence in depth either way: RLS rejects every
  * request that lacks a server-signed `wallet_address` claim, so bypassing the
  * guard in the client would still yield an app with no data.
@@ -34,10 +34,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F6F6F6]">
+      <div className="flex min-h-screen items-center justify-center bg-paper">
         <div className="text-center">
-          <Spinner size={48} />
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <Spinner size={48} className="text-muted" />
+          <p className="mt-4 text-sm text-muted">Loading…</p>
         </div>
       </div>
     );
@@ -56,25 +56,24 @@ export function AuthGuard({ children }: AuthGuardProps) {
     };
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F6F6F6] px-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-[0_8px_60px_-12px_rgba(0,0,0,0.18)] p-8 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-[#FF6B6B]/10 flex items-center justify-center mx-auto mb-5">
-            <ShieldAlert size={24} className="text-[#FF6B6B]" />
+      <div className="flex min-h-screen items-center justify-center bg-paper px-4">
+        <div className="card-flat w-full max-w-md p-8 text-center">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-md bg-danger-soft">
+            <ShieldAlert size={24} className="text-danger" />
           </div>
-          <h1 className="text-xl font-black text-[#0F0F14] mb-2">
-            Verify your wallet
-          </h1>
-          <p className="text-sm text-[#666] leading-relaxed mb-6">
-            SettleX needs a signature from your wallet to prove you own this
+          <h1 className="t-h3 mb-2 text-ink">Verify your wallet</h1>
+          <p className="mb-6 text-sm leading-relaxed text-muted">
+            Belay needs a signature from your wallet to prove you own this
             address. Nothing is submitted to the network and no fee is charged.
           </p>
-          <p className="text-xs text-[#888] bg-[#F6F6F6] rounded-xl px-4 py-3 mb-6 break-words">
+          <p className="mb-6 break-words rounded-md bg-paper px-4 py-3 text-xs text-muted">
             {sessionError}
           </p>
           <Button
+            variant="primary"
             onClick={retry}
-            disabled={isRetrying}
-            className="w-full bg-[#0F0F14] text-white hover:bg-[#2a2a2f] h-12 font-bold rounded-xl"
+            loading={isRetrying}
+            className="h-12 w-full"
           >
             {isRetrying ? "Waiting for your wallet…" : "Sign to continue"}
           </Button>

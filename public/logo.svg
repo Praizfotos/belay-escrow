@@ -8,7 +8,7 @@
     fill="#B9FF66"
   />
 
-  <!-- Wordmark: "Settle" -->
+  <!-- Wordmark: "Pact" -->
   <text
     x="50"
     y="33"
@@ -17,11 +17,11 @@
     font-weight="800"
     letter-spacing="-0.5"
     fill="#0F0F14"
-  >Settle</text>
+  >Pact</text>
 
   <!-- Wordmark: "X" in accent green -->
   <text
-    x="132"
+    x="102"
     y="33"
     font-family="'Poppins', 'Inter', 'Segoe UI', Arial, sans-serif"
     font-size="22"

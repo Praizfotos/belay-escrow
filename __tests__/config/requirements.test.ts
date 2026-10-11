@@ -14,10 +14,13 @@ import {
 /** A fully configured production environment, as a starting point to break. */
 function completeEnv(): NodeJS.ProcessEnv {
   return {
+    NODE_ENV: "production",
     NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
     NEXT_PUBLIC_CONTRACT_ID: "CCONTRACT",
-    NEXT_PUBLIC_SITE_URL: "https://settlex.app",
+    NEXT_PUBLIC_VAULT_CONTRACT_ID: "CVAULT",
+    NEXT_PUBLIC_ESCROW_TOKEN_ID: "CTOKEN",
+    NEXT_PUBLIC_SITE_URL: "https://belay.app",
     SUPABASE_JWT_SECRET: "jwt-secret",
     AUTH_CHALLENGE_SECRET: "challenge-secret",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
@@ -61,6 +64,8 @@ describe("checkConfig", () => {
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "NEXT_PUBLIC_SITE_URL",
         "NEXT_PUBLIC_CONTRACT_ID",
+        "NEXT_PUBLIC_VAULT_CONTRACT_ID",
+        "NEXT_PUBLIC_ESCROW_TOKEN_ID",
       ]),
     );
   });
@@ -75,13 +80,29 @@ describe("checkConfig", () => {
     expect(report.problems.map((p) => p.name)).toContain("SUPABASE_JWT_SECRET");
   });
 
-  it("reports a missing recommended value as a warning, not a failure", () => {
+  it("fails when SUPABASE_SERVICE_ROLE_KEY is missing (sign-out revocation needs it)", () => {
     const env = completeEnv();
     delete env.SUPABASE_SERVICE_ROLE_KEY;
 
     const report = checkConfig(env);
+    expect(report.ok).toBe(false);
+    expect(report.problems.map((p) => p.name)).toContain("SUPABASE_SERVICE_ROLE_KEY");
+  });
+
+  it("warns about the escrow vault and token without blocking the build", () => {
+    // Both are recommended: the agreement contract still works, but releases,
+    // refunds and token balances do not.
+    const env = completeEnv();
+    delete env.NEXT_PUBLIC_VAULT_CONTRACT_ID;
+    delete env.NEXT_PUBLIC_ESCROW_TOKEN_ID;
+
+    const report = checkConfig(env);
     expect(report.ok).toBe(true);
-    expect(report.warnings.map((p) => p.name)).toEqual(["SUPABASE_SERVICE_ROLE_KEY"]);
+    expect(report.problems).toEqual([]);
+    expect(report.warnings.map((p) => p.name)).toEqual([
+      "NEXT_PUBLIC_VAULT_CONTRACT_ID",
+      "NEXT_PUBLIC_ESCROW_TOKEN_ID",
+    ]);
   });
 
   it("rejects one key reused for both cryptographic purposes", () => {

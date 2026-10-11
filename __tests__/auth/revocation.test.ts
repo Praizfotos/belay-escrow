@@ -60,7 +60,7 @@ describe("revocation", () => {
     await revokeToken({ jti: "token-id", walletAddress: WALLET, expiresAt: 1_800_000_000 });
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toContain("/rest/v1/rpc/settlex_revoke_token");
+    expect(url).toContain("/rest/v1/rpc/belay_revoke_token");
     expect((init.headers as Record<string, string>).apikey).toBe(SERVICE_KEY);
     expect(JSON.parse(String(init.body))).toEqual({
       p_jti: "token-id",
@@ -76,7 +76,7 @@ describe("revocation", () => {
     await revokeWallet(WALLET);
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toContain("/rest/v1/rpc/settlex_revoke_wallet");
+    expect(url).toContain("/rest/v1/rpc/belay_revoke_wallet");
     expect(JSON.parse(String(init.body))).toEqual({ p_wallet_address: WALLET });
   });
 

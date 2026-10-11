@@ -1,23 +1,25 @@
-# SettleX Production Runbook
+# Belay Production Runbook
 
 ## 1. Prerequisites
 
 - Node.js 18+
 - npm 9+
-- Rust toolchain (for contract work)
+- Rust toolchain with the `wasm32v1-none` target (for contract work)
 - Stellar CLI (for deployment operations)
 - Funded Stellar testnet account
 - Supabase project with schema from `supabase-setup.sql`
 
 ## 2. Environment Setup
 
-Create `.env.local` and set:
+Create `.env.local` and set the public values:
 
 - `NEXT_PUBLIC_STELLAR_NETWORK=TESTNET`
 - `NEXT_PUBLIC_HORIZON_URL`
 - `NEXT_PUBLIC_STELLAR_EXPLORER`
 - `NEXT_PUBLIC_SOROBAN_RPC_URL`
-- `NEXT_PUBLIC_CONTRACT_ID`
+- `NEXT_PUBLIC_CONTRACT_ID` — the Belay agreement contract
+- `NEXT_PUBLIC_VAULT_CONTRACT_ID` — the escrow vault contract
+- `NEXT_PUBLIC_ESCROW_TOKEN_ID` — the SEP-41 token (USDC SAC on testnet) the vault custodies
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
@@ -31,6 +33,8 @@ them in the browser bundle and let anyone mint a token for any wallet):
   value fails the deploy rather than the first sign-in. Falls back to the JWT
   secret outside production only.
 - `AUTH_SESSION_TTL_SECONDS` — optional, default 43200 (12h), capped at 86400.
+- `SUPABASE_SERVICE_ROLE_KEY` — required on any multi-instance deploy. Backs the
+  shared replay guard, rate limiter, and revocation.
 
 Set the same server-only values in the deployment environment (Vercel → Project
 Settings → Environment Variables, or equivalent), not just in `.env.local`.
@@ -49,21 +53,35 @@ Run contract tests:
 
 ## 4. Contract Deployment (Testnet)
 
-Recommended flow:
+Both contracts live in the `belay-contract` crate, so one WASM carries both
+specs. Use the provided script:
 
-1. Build contract via Stellar CLI tooling.
-2. Deploy settlement and pool contract instances.
-3. Initialize pool and settlement references.
-4. Execute one `record_payment` flow that triggers pool withdraw to prove inter-contract behavior.
-5. Update `NEXT_PUBLIC_CONTRACT_ID` with settlement contract ID.
-6. Save all explorer links in README/docs.
+```bash
+rustup target add wasm32v1-none
+cargo install --locked stellar-cli
+chmod +x scripts/deploy-contract.sh
+./scripts/deploy-contract.sh <secret-key-or-alias> <ESCROW_TOKEN_ID>
+```
+
+The script:
+
+1. Builds `belay-contract` (release, optimized).
+2. Deploys the agreement contract and the vault contract (same WASM, two
+   addresses).
+3. Calls `init_vault(admin, controller=<Belay contract>, token)`.
+4. Calls `init(admin, vault=<vault contract>)`.
+5. Prints the three env values to paste into `.env.local`.
+
+The Belay contract is the vault's **controller** — only it may release or refund,
+which keeps custody and milestone rules in a single authorization path. To change
+it later, call the vault's `set_controller`.
 
 ## 5. CI/CD Verification
 
 - Ensure workflow files exist and are valid:
   - `.github/workflows/ci.yml`
   - `.github/workflows/production-check.yml`
-- Confirm CI badge resolves in README.
+- Confirm the CI badge resolves in README.
 - Confirm repo settings enforce checks on PRs (manual GitHub setting).
 
 ## 6. Release Documentation Pack
@@ -77,10 +95,15 @@ Before submission, verify:
 
 ## 7. Incident / Rollback Basics
 
-If production-like issue occurs:
+If a production-like issue occurs:
 
 1. Stop deployment changes.
 2. Re-run lint/test/build and contract tests.
-3. Validate `.env.local` contract ID.
-4. Compare README proof IDs/tx hashes against explorer.
-5. If contract ID is wrong, redeploy and update env + docs consistently.
+3. Validate the three contract env values in `.env.local`.
+4. Compare README proof IDs/tx hashes against the explorer.
+5. If a contract ID is wrong (or the wrong token was bound at `init_vault`),
+   redeploy and update env + docs consistently. The vault's token can only be
+   changed with `set_token` while no funds are locked.
+6. If signers cannot act on the agreements contract, confirm the vault address
+   stored in it (`get_vault`) matches `NEXT_PUBLIC_VAULT_CONTRACT_ID` and fix it
+   with `set_vault`.

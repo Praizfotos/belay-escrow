@@ -14,6 +14,10 @@ export interface InputProps
   trailing?: React.ReactNode;  // icon/text inside right edge
 }
 
+const FIELD_BASE =
+  "w-full rounded-md border bg-surface px-3.5 py-2.5 text-sm text-ink transition-colors duration-150 " +
+  "placeholder:text-muted-faint border-line hover:border-muted-faint";
+
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   (
     {
@@ -34,18 +38,15 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label
-            htmlFor={inputId}
-            className="text-xs font-semibold text-[#444] uppercase tracking-wide"
-          >
+          <label htmlFor={inputId} className="t-eyebrow">
             {label}
-            {required && <span className="text-red-500 ml-0.5">*</span>}
+            {required && <span className="ml-0.5 text-danger">*</span>}
           </label>
         )}
 
         <div className="relative flex items-center">
           {leading && (
-            <div className="absolute left-3 flex items-center pointer-events-none text-[#AAA]">
+            <div className="pointer-events-none absolute left-3 flex items-center text-muted-faint">
               {leading}
             </div>
           )}
@@ -54,31 +55,26 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             required={required}
+            aria-invalid={error ? true : undefined}
             className={cn(
-              "w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-[#0F0F14]",
-              "placeholder:text-[#CCC] outline-none transition-all duration-150",
-              "border-[#E5E5E5] focus:border-[#B9FF66] focus:ring-2 focus:ring-[#B9FF66]/20",
-              error && "border-red-300 focus:border-red-400 focus:ring-red-100",
-              leading  && "pl-9",
+              FIELD_BASE,
+              error && "border-danger hover:border-danger",
+              leading && "pl-9",
               trailing && "pr-9",
-              className
+              className,
             )}
             {...props}
           />
 
           {trailing && (
-            <div className="absolute right-3 flex items-center pointer-events-none text-[#AAA]">
+            <div className="pointer-events-none absolute right-3 flex items-center text-muted-faint">
               {trailing}
             </div>
           )}
         </div>
 
-        {error && (
-          <p className="text-xs font-medium text-red-500">{error}</p>
-        )}
-        {hint && !error && (
-          <p className="text-xs text-[#AAA]">{hint}</p>
-        )}
+        {error && <p className="text-xs font-medium text-danger">{error}</p>}
+        {hint && !error && <p className="text-xs text-muted-faint">{hint}</p>}
       </div>
     );
   }
@@ -102,30 +98,27 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label
-            htmlFor={inputId}
-            className="text-xs font-semibold text-[#444] uppercase tracking-wide"
-          >
+          <label htmlFor={inputId} className="t-eyebrow">
             {label}
-            {required && <span className="text-red-500 ml-0.5">*</span>}
+            {required && <span className="ml-0.5 text-danger">*</span>}
           </label>
         )}
         <textarea
           ref={ref}
           id={inputId}
           required={required}
+          aria-invalid={error ? true : undefined}
           className={cn(
-            "w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-[#0F0F14]",
-            "placeholder:text-[#CCC] outline-none transition-all duration-150 resize-none",
-            "border-[#E5E5E5] focus:border-[#B9FF66] focus:ring-2 focus:ring-[#B9FF66]/20",
-            error && "border-red-300 focus:border-red-400 focus:ring-red-100",
-            className
+            FIELD_BASE,
+            "resize-none",
+            error && "border-danger hover:border-danger",
+            className,
           )}
           rows={3}
           {...props}
         />
-        {error && <p className="text-xs font-medium text-red-500">{error}</p>}
-        {hint && !error && <p className="text-xs text-[#AAA]">{hint}</p>}
+        {error && <p className="text-xs font-medium text-danger">{error}</p>}
+        {hint && !error && <p className="text-xs text-muted-faint">{hint}</p>}
       </div>
     );
   }

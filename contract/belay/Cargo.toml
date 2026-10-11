@@ -1,0 +1,20 @@
+[package]
+name    = "belay-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Belay — milestone escrow agreements on Stellar Soroban"
+license = "Apache-2.0"
+
+# The sources live in `contract/src/` next to this workspace so the Belay and
+# vault contracts can share the test token and fixtures. Pointing the manifest
+# at them keeps one copy of the code while still building a wasm per contract.
+[lib]
+path       = "../src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
+belay-vault = { path = "../vault" }

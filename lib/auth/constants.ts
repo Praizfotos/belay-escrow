@@ -61,4 +61,4 @@ export const WALLET_CLAIM = "wallet_address";
 export const AUTH_REQUEST_TIMEOUT_MS = 15_000;
 
 /** localStorage key holding the cached access token. */
-export const LS_SESSION = "settlex:session";
+export const LS_SESSION = "belay:session";

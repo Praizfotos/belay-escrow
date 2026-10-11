@@ -4,7 +4,7 @@
  * Regression tests for "the entire session is client-side state that can be
  * forged in localStorage".
  *
- * The attack was: write `settlex:user` + `settlex:publicKey` by hand, reload,
+ * The attack was: write `belay:user` + `belay:publicKey` by hand, reload,
  * and every guarded route opens with an arbitrary identity. These tests drive
  * the real providers with a forged localStorage and assert the app refuses.
  */
@@ -12,9 +12,8 @@ import React from "react";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { WalletProvider, useWalletContext } from "@/context/WalletContext";
 import {
-  LS_EXPENSES,
+  LS_AGREEMENTS,
   LS_PUBLIC_KEY,
-  LS_TRIPS,
   LS_USER,
   LS_WALLET_ID,
   getWalletScopedKey,
@@ -219,8 +218,7 @@ describe("wallet-scoped cache cleanup", () => {
     localStorage.setItem(LS_PUBLIC_KEY, staleWallet);
     localStorage.setItem(LS_WALLET_ID, "freighter");
     localStorage.setItem(LS_USER, JSON.stringify({ walletAddress: staleWallet, displayName: "Stale user" }));
-    localStorage.setItem(getWalletScopedKey(LS_EXPENSES, staleWallet), JSON.stringify([{ id: "e1" }]));
-    localStorage.setItem(getWalletScopedKey(LS_TRIPS, staleWallet), JSON.stringify([{ id: "t1" }]));
+    localStorage.setItem(getWalletScopedKey(LS_AGREEMENTS, staleWallet), JSON.stringify([{ id: "e1" }]));
 
     render(
       <WalletProvider>
@@ -235,8 +233,7 @@ describe("wallet-scoped cache cleanup", () => {
     expect(localStorage.getItem(LS_PUBLIC_KEY)).toBeNull();
     expect(localStorage.getItem(LS_WALLET_ID)).toBeNull();
     expect(localStorage.getItem(LS_USER)).toBeNull();
-    expect(localStorage.getItem(getWalletScopedKey(LS_EXPENSES, staleWallet))).toBeNull();
-    expect(localStorage.getItem(getWalletScopedKey(LS_TRIPS, staleWallet))).toBeNull();
+    expect(localStorage.getItem(getWalletScopedKey(LS_AGREEMENTS, staleWallet))).toBeNull();
   });
 });
 

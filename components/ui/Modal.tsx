@@ -87,39 +87,51 @@ export function Modal({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+                  className="fixed inset-0 z-50 bg-ink/40"
                   onClick={disableBackdropClose ? undefined : onClose}
                   aria-hidden="true"
                 />
               </Dialog.Overlay>
 
-              <Dialog.Content asChild forceMount>
+              {/* Radix owns the dialog semantics, focus trap and keyboard
+                  handling on <Dialog.Content>; the motion.div only animates
+                  the panel visually inside it. This keeps every Radix prop
+                  (onEscapeKeyDown, onCloseAutoFocus, …) typed and handled by
+                  Radix itself instead of forwarding them to framer-motion. */}
+              <Dialog.Content
+                forceMount
+                aria-describedby={description ? descriptionId : undefined}
+                className={cn(
+                  "fixed z-50 w-full max-w-[calc(100vw-1rem)]",
+                  "left-0 right-0 bottom-0 sm:bottom-auto",
+                  "sm:left-1/2 sm:right-auto sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+                  sizeClasses[size],
+                  className
+                )}
+                onEscapeKeyDown={(event) => {
+                  event.preventDefault();
+                  onClose();
+                }}
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  restoreFocus();
+                }}
+              >
                 <motion.div
-                  initial={{ opacity: 0, y: 40, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 16 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   className={cn(
-                    "relative w-full pointer-events-auto",
-                    "bg-white shadow-[0_24px_80px_-12px_rgba(0,0,0,0.2)]",
-                    "border-t sm:border border-[#E5E5E5]",
-                    "rounded-t-2xl sm:rounded-2xl",
-                    "flex flex-col max-h-[92dvh] sm:max-h-[90dvh]",
-                    sizeClasses[size],
-                    className
+                    "relative flex flex-col w-full overflow-hidden",
+                    "bg-surface border border-line shadow-pop",
+                    "max-h-[92dvh] sm:max-h-[85dvh]",
+                    "rounded-t-lg sm:rounded-lg"
                   )}
                   onClick={(e) => e.stopPropagation()}
-                  onCloseAutoFocus={(event) => {
-                    event.preventDefault();
-                    restoreFocus();
-                  }}
-                  onEscapeKeyDown={(event) => {
-                    event.preventDefault();
-                    onClose();
-                  }}
                 >
                   <div className="flex justify-center pt-3 sm:hidden">
-                    <div className="w-8 h-1 rounded-full bg-[#D0D0D0]" />
+                    <div className="w-8 h-1 rounded-full bg-line" />
                   </div>
 
                   {(title || description) && (
@@ -127,14 +139,14 @@ export function Modal({
                       <div>
                         {title && (
                           <Dialog.Title asChild>
-                            <h2 id={titleId} className="text-base font-bold text-[#0F0F14]">
+                            <h2 id={titleId} className="t-h3 text-ink">
                               {title}
                             </h2>
                           </Dialog.Title>
                         )}
                         {description && (
                           <Dialog.Description asChild>
-                            <p id={descriptionId} className="mt-1 text-sm text-[#888]">
+                            <p id={descriptionId} className="mt-1 text-sm text-muted">
                               {description}
                             </p>
                           </Dialog.Description>
@@ -143,7 +155,7 @@ export function Modal({
                       <Dialog.Close asChild>
                         <button
                           onClick={onClose}
-                          className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#AAA] hover:text-[#555] hover:bg-[#F5F5F5] transition-colors"
+                          className="shrink-0 w-7 h-7 rounded-sm flex items-center justify-center text-muted-faint hover:text-ink hover:bg-paper transition-colors"
                           aria-label="Close modal"
                         >
                           <X size={15} />
@@ -160,7 +172,7 @@ export function Modal({
                     <Dialog.Close asChild>
                       <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 z-10 w-7 h-7 rounded-lg flex items-center justify-center text-[#AAA] hover:text-[#555] hover:bg-[#F5F5F5] transition-colors"
+                        className="absolute top-4 right-4 z-10 w-7 h-7 rounded-sm flex items-center justify-center text-muted-faint hover:text-ink hover:bg-paper transition-colors"
                         aria-label="Close modal"
                       >
                         <X size={15} />
@@ -193,7 +205,7 @@ export function ModalFooter({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-2 pt-4 mt-2 border-t border-[#F0F0F0]",
+        "flex items-center justify-end gap-2 pt-4 mt-2 border-t border-line",
         className
       )}
     >

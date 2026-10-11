@@ -32,8 +32,8 @@ export default function OfflinePage() {
       </svg>
       <h1 style={{ fontSize: "24px", fontWeight: 800, margin: 0 }}>You&rsquo;re offline</h1>
       <p style={{ color: "#B8B8C0", maxWidth: "360px", margin: 0, lineHeight: 1.5 }}>
-        SettleX needs a connection to read balances and settle payments. Your
-        last-synced trips are still on your device — reconnect to continue.
+        Belay needs a connection to read balances and sign escrow transactions. Your
+        last-synced agreements are still on your device — reconnect to continue.
       </p>
       <a
         href="/dashboard"

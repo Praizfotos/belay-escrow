@@ -46,17 +46,15 @@ export function useToast() {
 // ─── Individual Toast Card ────────────────────────────────────────────────────
 
 const icons: Record<ToastVariant, React.ReactNode> = {
-  success: <CheckCircle2 size={16} className="text-[#2D6600]" />,
-  error: <XCircle size={16} className="text-red-500" />,
-  info: <Info size={16} className="text-blue-500" />,
+  success: <CheckCircle2 size={16} className="text-accent-ink" />,
+  error: <XCircle size={16} className="text-danger" />,
+  info: <Info size={16} className="text-muted" />,
 };
 
 const variantStyles: Record<ToastVariant, string> = {
-  success:
-    "bg-white border-[#B9FF66]/60 shadow-[0_4px_24px_-4px_rgba(185,255,102,0.25)]",
-  error:
-    "bg-white border-red-200 shadow-[0_4px_24px_-4px_rgba(239,68,68,0.15)]",
-  info: "bg-white border-blue-200 shadow-[0_4px_24px_-4px_rgba(59,130,246,0.15)]",
+  success: "bg-surface border-accent/50 shadow-pop",
+  error: "bg-surface border-danger/30 shadow-pop",
+  info: "bg-surface border-line shadow-pop",
 };
 
 const AUTO_DISMISS_MS = 4000;
@@ -85,21 +83,22 @@ function ToastCard({
       exit={{ opacity: 0, y: 10, scale: 0.95 }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "flex items-start gap-3 w-full max-w-sm rounded-2xl border px-4 py-3 pointer-events-auto",
-        variantStyles[t.variant]
+        "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border px-4 py-3",
+        variantStyles[t.variant],
       )}
     >
-      <div className="shrink-0 mt-0.5">{icons[t.variant]}</div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#0F0F14] leading-snug">{t.title}</p>
+      <div className="mt-0.5 shrink-0">{icons[t.variant]}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold leading-snug text-ink">{t.title}</p>
         {t.description && (
-          <p className="text-xs text-[#666] mt-0.5 leading-snug">{t.description}</p>
+          <p className="mt-0.5 text-xs leading-snug text-muted">{t.description}</p>
         )}
       </div>
       <button
+        type="button"
         onClick={() => onDismiss(t.id)}
-        className="shrink-0 text-[#AAA] hover:text-[#555] transition-colors mt-0.5"
         aria-label="Dismiss"
+        className="mt-0.5 shrink-0 text-muted-faint transition-colors hover:text-ink"
       >
         <X size={14} />
       </button>

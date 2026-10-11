@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-interface SettleXLogoProps {
+interface BelayLogoProps {
   /** Controls the overall scale of the logo */
   size?: "sm" | "md" | "lg" | "xl";
   /** Show only the icon mark without the wordmark text */
@@ -22,15 +22,15 @@ const SIZE_MAP = {
 };
 
 /**
- * SettleX brand logo — inline SVG so it works without any image requests,
+ * Belay brand logo — inline SVG so it works without any image requests,
  * renders crisp at every size, and respects the app's colour tokens.
  */
-export function SettleXLogo({
+export function BelayLogo({
   size    = "md",
   iconOnly = false,
   variant  = "light",
   className,
-}: SettleXLogoProps) {
+}: BelayLogoProps) {
   const { iconSize, fontSize, gap } = SIZE_MAP[size];
   const r = Math.round(iconSize * 0.25);
   const wordmarkColor = variant === "dark" ? "#FFFFFF" : "#0F0F14";
@@ -64,17 +64,11 @@ export function SettleXLogo({
       {!iconOnly && (
         <span
           className={cn(
-            "font-black tracking-tight leading-none select-none",
+            "font-bold tracking-tight leading-none select-none",
             fontSize,
           )}
         >
-          <span style={{ color: wordmarkColor }}>Settle</span>
-          <span
-            className="text-[#B9FF66]"
-            style={{ textShadow: "0 0 24px rgba(185,255,102,0.4)" }}
-          >
-            X
-          </span>
+          <span style={{ color: wordmarkColor }}>Belay</span>
         </span>
       )}
     </div>

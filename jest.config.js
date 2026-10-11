@@ -45,13 +45,7 @@ const config = {
       lines: 70,
       statements: 70,
     },
-    "./lib/split/": {
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70,
-    },
-    "./lib/settlement/": {
+    "./lib/escrow/": {
       branches: 70,
       functions: 70,
       lines: 70,

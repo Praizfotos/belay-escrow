@@ -14,7 +14,7 @@ import {
   type LogRecord,
 } from "@/lib/observability/logger";
 
-const RLS_TEXT = 'new row violates row-level security policy for table "expenses"';
+const RLS_TEXT = 'new row violates row-level security policy for table "agreements"';
 
 let records: LogRecord[] = [];
 
@@ -52,7 +52,7 @@ describe("a raw Postgres error reaching the boundary", () => {
   it("shows the user a generic line instead of the database text", () => {
     const { message } = handle(error);
     expect(message).not.toContain("row-level security");
-    expect(message).not.toContain("expenses");
+    expect(message).not.toContain("agreements");
   });
 
   it("still records the full detail for debugging", () => {

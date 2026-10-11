@@ -17,6 +17,8 @@ import { getWalletScopedKey, LS_PUBLIC_KEY, LS_USER } from "@/lib/utils/constant
 import { parseUserRow } from "@/lib/supabase/rowGuards";
 import { useToast } from "@/components/ui/Toast";
 import { reportError } from "@/lib/observability/logger";
+import { supabaseErrorFields } from "@/lib/observability/supabaseError";
+import { userFacingMessage } from "@/lib/errors/userMessage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,7 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { publicKey, isConnected, isHydrated } = useWalletContext();
 
   // Authorization rests on the verified token, never on cached state. Writing
-  // `settlex:user` and `settlex:publicKey` by hand now buys nothing: without a
+  // `belay:user` and `belay:publicKey` by hand now buys nothing: without a
   // signature the server issues no token, so this stays false and every
   // database call is rejected by RLS regardless.
   const isAuthenticated =

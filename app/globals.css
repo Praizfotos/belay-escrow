@@ -3,31 +3,57 @@
 @tailwind utilities;
 
 @layer base {
+  /* ─────────────────────────────────────────────────────────────────────────
+     Belay design tokens — one accent (climbing lime) over warm neutrals.
+     Lime is an *accent*: indicators, success, focus on dark, small highlights.
+     Primary actions are ink. No gradients, no glow, no glass.
+     ───────────────────────────────────────────────────────────────────────── */
   :root {
-    --background: 0 0% 97%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --primary: 82 100% 63%;
-    --primary-foreground: 240 10% 4%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 82 100% 63%;
-    --accent-foreground: 240 10% 4%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 82 100% 63%;
-    --radius: 1rem;
+    /* Neutrals */
+    --ink: 240 9% 6%;          /* #0F0F14 — text, primary buttons            */
+    --ink-soft: 240 5% 22%;    /* secondary dark surfaces                     */
+    --ink-inverse: 0 0% 100%;
+    --paper: 60 5% 97%;        /* #F6F6F6 — app background                    */
+    --surface: 0 0% 100%;      /* cards                                       */
+    --line: 40 8% 90%;         /* #E5E5E5 — borders                           */
+    --muted-foreground: 220 3% 42%;
+    --muted-faint: 220 2% 64%;
+
+    /* Accent */
+    --accent: 82 100% 63%;     /* #B9FF66 — indicator / success               */
+    --accent-ink: 96 78% 21%;  /* #2D6600 — accent text on light surfaces     */
+    --accent-soft: 82 100% 95%;
+
+    /* Semantic */
+    --danger: 0 72% 51%;
+    --danger-soft: 0 86% 97%;
+    --warn: 32 90% 38%;
+    --warn-soft: 40 92% 96%;
+
+    /* shadcn mapping (kept for primitives that consume these vars) */
+    --background: var(--paper);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--ink);
+    --primary-foreground: var(--ink-inverse);
+    --secondary: var(--paper);
+    --secondary-foreground: var(--ink);
+    --muted: var(--paper);
+    --accent-fallback: var(--accent);
+    --accent-foreground: var(--ink);
+    --destructive: var(--danger);
+    --destructive-foreground: var(--ink-inverse);
+    --border: var(--line);
+    --input: var(--line);
+    --ring: var(--ink);
+    --radius: 0.75rem;
   }
 
   * {
-    @apply border-border;
+    @apply border-line;
   }
 
   html {
@@ -35,167 +61,143 @@
   }
 
   body {
-    @apply bg-neutral-bg text-foreground font-sans antialiased;
-    font-family: var(--font-poppins), 'Inter', system-ui, -apple-system, sans-serif;
+    @apply bg-paper text-ink font-sans antialiased;
+    font-family: var(--font-poppins), "Inter", system-ui, -apple-system, sans-serif;
   }
 
   ::selection {
-    background-color: #B9FF66;
-    color: #0F0F14;
+    background-color: #b9ff66;
+    color: #0f0f14;
+  }
+
+  /* One focus treatment everywhere: 2px ink ring with a surface inner gap.
+     Sections marked `.on-dark` flip it to lime so it stays visible. */
+  :focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px hsl(var(--surface)),
+      0 0 0 4px hsl(var(--ring));
+    border-radius: inherit;
+  }
+
+  .on-dark :focus-visible {
+    box-shadow:
+      0 0 0 2px hsl(var(--ink)),
+      0 0 0 4px hsl(var(--accent));
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
+    width: 10px;
+    height: 10px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #F6F6F6;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #B9FF66;
-    border-radius: 3px;
+    background: #d4d4d2;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #9AE040;
+    background: #b8b8b4;
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
-  /* ── Button variants ── */
+  /* ── Layout ── */
+  .container-page {
+    @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .section-pad {
+    @apply py-16 sm:py-20 lg:py-24;
+  }
+
+  /* ── Typography (deliberate scale) ── */
+  .t-display {
+    @apply text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.06];
+  }
+
+  .t-h1 {
+    @apply text-2xl sm:text-3xl font-bold tracking-tight;
+  }
+
+  .t-h2 {
+    @apply text-xl sm:text-2xl font-semibold tracking-tight;
+  }
+
+  .t-h3 {
+    @apply text-base sm:text-lg font-semibold;
+  }
+
+  .t-eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.14em] text-muted-faint;
+  }
+
+  .t-body-lg {
+    @apply text-base sm:text-lg text-muted leading-relaxed;
+  }
+
+  /* ── Surfaces ── */
+  .card {
+    @apply bg-surface rounded-lg border border-line shadow-card;
+  }
+
+  .card-flat {
+    @apply bg-surface rounded-lg border border-line;
+  }
+
+  /* ── Buttons (legacy utility classes; components/ui/Button is canonical) ── */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#B9FF66] text-[#0F0F14] font-semibold rounded-2xl
-           transition-all duration-200 hover:bg-[#9AE040] hover:shadow-lime-glow hover:-translate-y-0.5
-           active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9FF66];
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-ink px-5 py-2.5
+           text-sm font-semibold text-white transition-colors
+           hover:bg-ink-soft active:bg-ink;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-[#0F0F14] font-semibold rounded-2xl border border-[#E5E5E5]
-           transition-all duration-200 hover:border-[#B9FF66] hover:shadow-card-hover hover:-translate-y-0.5
-           active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9FF66];
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line
+           bg-surface px-5 py-2.5 text-sm font-semibold text-ink transition-colors
+           hover:border-muted-faint;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[#0F0F14] font-medium rounded-xl
-           transition-all duration-200 hover:bg-black/5
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9FF66];
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2
+           text-sm font-medium text-ink transition-colors hover:bg-ink/5;
   }
 
-  .btn-dark {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#0F0F14] text-white font-semibold rounded-2xl
-           transition-all duration-200 hover:bg-[#1A1A22] hover:shadow-dark-card hover:-translate-y-0.5
-           active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9FF66];
-  }
-
-  /* ── Card variants ── */
-  .card-base {
-    @apply bg-white rounded-3xl border border-[#E5E5E5] shadow-card
-           transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1;
-  }
-
-  .card-dark {
-    @apply bg-[#1A1A22] rounded-3xl border border-white/5 shadow-dark-card
-           transition-all duration-300 hover:border-[#B9FF66]/20 hover:-translate-y-1;
-  }
-
-  .card-lime {
-    @apply bg-[#B9FF66] rounded-3xl shadow-lime-glow
-           transition-all duration-300 hover:-translate-y-1;
-  }
-
-  /* ── Badges ── */
-  .badge-lime {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 bg-[#B9FF66]/20 text-[#2D6600] text-xs font-semibold rounded-full
-           border border-[#B9FF66]/40;
-  }
-
-  .badge-dark {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 text-white text-xs font-semibold rounded-full
-           border border-white/10;
-  }
-
-  /* ── Section helpers ── */
-  .section-padding {
-    @apply px-4 sm:px-6 lg:px-8 py-20 lg:py-28;
-  }
-
-  .container-max {
-    @apply max-w-7xl mx-auto;
-  }
-
-  /* ── Typography ── */
-  .heading-hero {
-    @apply text-[3rem] sm:text-[3.5rem] lg:text-[5rem] xl:text-[5.5rem] font-black leading-[1.05] tracking-tight;
-  }
-
-  .heading-section {
-    @apply text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.1] tracking-tight;
-  }
-
-  .heading-card {
-    @apply text-xl font-bold leading-snug;
-  }
-
-  /* ── Gradient text ── */
-  .text-gradient-lime {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #B9FF66 0%, #7DD835 50%, #9AE040 100%);
-  }
-
-  /* ── Noise overlay ── */
-  .noise::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    pointer-events: none;
-    border-radius: inherit;
-  }
-
-  /* ── Grid background ── */
-  .bg-grid {
-    background-image: 
-      linear-gradient(rgba(185,255,102,0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(185,255,102,0.05) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
-
-  .bg-grid-dark {
-    background-image: 
-      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
+  .badge-accent {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-accent/50
+           bg-accent-soft px-2.5 py-0.5 text-2xs font-semibold text-accent-ink;
   }
 }
 
-/* ── Custom animations ── */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 
-.shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(185,255,102,0.1) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2.5s ease-in-out infinite;
-}
-
-/* ── Gradient border ── */
-.gradient-border {
-  position: relative;
-  border-radius: 1.5rem;
-  background: white;
-}
-.gradient-border::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, #B9FF66, transparent 60%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -5,8 +5,13 @@ const fromXdrMock = jest.fn();
 jest.mock("@/lib/stellar/client", () => ({
   server: {
     submitTransaction: (...args: unknown[]) => submitTransactionMock(...args),
+    // The real Horizon SDK's transaction() returns a CallBuilder; the record
+    // is only fetched once `.call()` is invoked. Model that shape so the
+    // production code cannot regress to reading properties off the builder.
     transactions: () => ({
-      transaction: (...args: unknown[]) => transactionLookupMock(...args),
+      transaction: (...args: unknown[]) => ({
+        call: () => transactionLookupMock(...args),
+      }),
     }),
   },
 }));

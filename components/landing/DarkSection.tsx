@@ -4,81 +4,63 @@ import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Shield,
-  Zap,
-  Globe,
+  ShieldCheck,
+  ScrollText,
+  Gavel,
   Lock,
-  ArrowRight,
   ExternalLink,
-  CheckCircle2,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
+import { useAuth } from "@/context/AuthContext";
 
-const highlights = [
-  {
-    icon: Shield,
-    title: "100% Non-Custodial",
-    description:
-      "Your private keys never touch our servers. All signing happens inside Freighter on your device.",
-  },
-  {
-    icon: Zap,
-    title: "Stellar-Native Speed",
-    description:
-      "5-second transaction finality. The Stellar consensus protocol settles payments faster than traditional finance.",
-  },
-  {
-    icon: Globe,
-    title: "Borderless Payments",
-    description:
-      "Anyone with a Freighter wallet and XLM can participate — no bank account, no geography limits.",
-  },
+const guarantees = [
   {
     icon: Lock,
-    title: "Immutable Receipts",
-    description:
-      "Every payment memo is permanently on-chain. No one can delete or alter the record of who paid whom.",
+    title: "On-chain",
+    body: "Agreement state, milestone amounts, funding, releases, refunds and dispute outcomes. Signed by the parties' wallets and settled by the Soroban contract.",
+  },
+  {
+    icon: ScrollText,
+    title: "In the agreement record",
+    body: "Human details: the milestone descriptions, due dates and the evidence note a freelancer attaches when submitting work.",
+  },
+  {
+    icon: Gavel,
+    title: "Disputes",
+    body: "A disputed milestone's tokens stay locked. The contract's arbitrator (or the admin, if none is set) resolves it by releasing to the freelancer or refunding the client — the outcome is another on-chain transaction.",
   },
 ];
 
-/* ── Mock Explorer Card ── */
-const MockExplorer = () => (
-  <div className="bg-[#1A1A22] rounded-2xl border border-white/5 overflow-hidden">
-    {/* Header */}
-    <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
-      <div className="flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-[#B9FF66] animate-pulse" />
-        <span className="text-xs font-mono text-[#888]">stellar.expert/explorer/testnet</span>
-      </div>
-      <ExternalLink size={12} className="text-[#555]" />
-    </div>
+/* ── Illustrative explorer panel ── */
 
-    <div className="p-5 space-y-4">
-      {/* TX Title */}
+const MockExplorer = () => (
+  <div className="rounded-lg border border-white/10 bg-white/[0.04] overflow-hidden">
+    <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
+      <span className="font-mono text-2xs text-white/50">
+        stellar.expert/explorer/testnet
+      </span>
+      <ExternalLink size={12} className="text-white/40" />
+    </div>
+    <div className="space-y-3 px-4 py-4">
       <div>
-        <p className="text-[10px] uppercase tracking-widest text-[#555] mb-1">Transaction</p>
-        <p className="text-sm font-mono text-[#B9FF66] break-all">
-          4f3a892c...8e2f1d20
+        <p className="t-eyebrow text-white/40">Example transaction</p>
+        <p className="mt-1 break-all font-mono text-xs text-accent">
+          4f3a892c…8e2f1d20
         </p>
       </div>
-
-      {/* Fields */}
       {[
-        { label: "Status", value: "✓ Success", color: "#B9FF66" },
-        { label: "Ledger", value: "47,291,034" },
-        { label: "Amount", value: "300.0000000 XLM" },
-        { label: "Memo", value: "SettleX|Dinner|Aman" },
-        { label: "Fee", value: "0.00001 XLM" },
-      ].map(({ label, value, color }) => (
-        <div key={label} className="flex items-center justify-between text-xs border-t border-white/5 pt-3">
-          <span className="text-[#555] font-medium">{label}</span>
-          <span
-            className="font-mono font-semibold"
-            style={{ color: color || "#aaa" }}
-          >
-            {value}
-          </span>
+        { label: "Type", value: "milestone release" },
+        { label: "Amount", value: "400.0000000 tokens" },
+        { label: "Paid to", value: "G…RH4 · freelancer" },
+        { label: "Network fee", value: "0.00001 XLM" },
+      ].map(({ label, value }) => (
+        <div
+          key={label}
+          className="flex items-center justify-between border-t border-white/10 pt-3 text-xs"
+        >
+          <span className="text-white/50">{label}</span>
+          <span className="font-mono font-medium text-white/85">{value}</span>
         </div>
       ))}
     </div>
@@ -86,154 +68,94 @@ const MockExplorer = () => (
 );
 
 export default function DarkSection() {
+  const { isAuthenticated } = useAuth();
+
   return (
-    <section className="relative bg-[#0F0F14] overflow-hidden">
-      {/* Grid overlay */}
-      <div className="absolute inset-0 bg-grid-dark opacity-60 pointer-events-none" />
+    <section id="disputes" className="on-dark section-pad bg-ink">
+      <div className="container-page">
+        <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-[1fr_0.8fr] lg:gap-16">
+          <div>
+            <p className="mb-3 text-2xs font-semibold uppercase tracking-[0.14em] text-white/40">
+              Transparency &amp; disputes
+            </p>
+            <h2 className="t-h1 text-white">
+              You can read the escrow the same way the contract does.
+            </h2>
+            <p className="mt-4 max-w-xl text-base leading-relaxed text-white/60">
+              Belay doesn&apos;t ask you to trust a company with your money.
+              Balances, approvals and refunds live in a public Soroban contract
+              on Stellar Testnet — and the disagreement path is written into it,
+              not into a support inbox.
+            </p>
 
-      {/* Lime radial glow top */}
-      <div
-        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full blur-[120px]"
-        style={{ background: "rgba(185,255,102,0.06)" }}
-      />
+            <div className="mt-8 space-y-3">
+              {guarantees.map((g, i) => (
+                <motion.div
+                  key={g.title}
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-60px" }}
+                  transition={{ duration: 0.45, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] p-5"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <g.icon size={15} className="shrink-0 text-accent" />
+                    <h3 className="text-sm font-semibold text-white">{g.title}</h3>
+                  </div>
+                  <p className="mt-2 pl-6 text-sm leading-relaxed text-white/55">
+                    {g.body}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
 
-      {/* Lime radial glow bottom */}
-      <div
-        className="pointer-events-none absolute -bottom-40 right-0 w-[500px] h-[500px] rounded-full blur-[100px]"
-        style={{ background: "rgba(185,255,102,0.04)" }}
-      />
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
-        {/* Section label */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="flex justify-center mb-16"
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#B9FF66]/10 border border-[#B9FF66]/20 rounded-full text-xs font-semibold text-[#B9FF66]">
-            <Shield size={11} />
-            Built on trust, verified on-chain
-          </div>
-        </motion.div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          {/* ── LEFT: Copy + highlights ── */}
-          <div className="lg:col-span-7">
-            <motion.h2
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              className="text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.05] tracking-tight text-white mb-6"
-            >
-              Transparency isn&apos;t a feature.
-              <br />
-              <span
-                className="bg-clip-text text-transparent"
-                style={{
-                  backgroundImage: "linear-gradient(135deg, #B9FF66 0%, #9AE040 100%)",
-                }}
-              >
-                It&apos;s the foundation.
-              </span>
-            </motion.h2>
-
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="text-[#888] text-lg leading-relaxed mb-10 max-w-xl"
-            >
-              Every transaction on SettleX is permanently recorded on the Stellar
-              ledger. No central server. No hidden fees. No trust required — just
-              math and cryptography.
-            </motion.p>
-
-            {/* Highlights grid */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10"
-            >
-              {highlights.map((h, i) => {
-                const Icon = h.icon;
-                return (
-                  <motion.div
-                    key={h.title}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 0.1 + i * 0.07 }}
-                    className="group p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-[#B9FF66]/20 hover:bg-white/8 transition-all duration-300"
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-8 h-8 rounded-xl bg-[#B9FF66]/10 flex items-center justify-center group-hover:bg-[#B9FF66]/20 transition-all">
-                        <Icon size={15} className="text-[#B9FF66]" />
-                      </div>
-                      <h3 className="text-sm font-bold text-white">{h.title}</h3>
-                    </div>
-                    <p className="text-xs text-[#666] leading-relaxed pl-11">
-                      {h.description}
-                    </p>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-
-            {/* CTA */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="flex flex-col sm:flex-row gap-3"
-            >
-              <Button variant="primary" size="lg" asChild>
-                <Link href="/dashboard">
-                  Get Started Free
-                  <ArrowRight size={18} />
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button variant="accent" size="lg" asChild>
+                <Link href={isAuthenticated ? "/agreements/new" : "/auth"}>
+                  Create an agreement
+                  <ArrowRight size={16} />
                 </Link>
               </Button>
-              <Button variant="outline-lime" size="lg" asChild>
+              <Button variant="ghost-white" size="lg" asChild>
                 <a
                   href="https://stellar.expert/explorer/testnet"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  View on Stellar Explorer
-                  <ExternalLink size={16} />
+                  Open the testnet explorer
+                  <ExternalLink size={15} />
                 </a>
               </Button>
-            </motion.div>
+            </div>
           </div>
 
-          {/* ── RIGHT: Mock explorer ── */}
           <motion.div
-            initial={{ opacity: 0, x: 40 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="lg:col-span-5 space-y-4"
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-4 lg:sticky lg:top-24"
           >
             <MockExplorer />
 
-            {/* Verification strip */}
-            <div className="flex items-center gap-3 bg-[#B9FF66]/8 border border-[#B9FF66]/15 rounded-2xl px-4 py-3">
-              <CheckCircle2 size={18} className="text-[#B9FF66] shrink-0" />
+            <div className="flex items-start gap-3 rounded-lg border border-accent/25 bg-accent/10 px-4 py-3">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0 text-accent" />
               <div>
-                <p className="text-xs font-semibold text-white">
-                  Publicly verifiable
+                <p className="text-sm font-semibold text-white">
+                  Verifiable, not just visible
                 </p>
-                <p className="text-[11px] text-[#666]">
-                  Anyone with the TX hash can verify this payment independently
+                <p className="mt-0.5 text-xs leading-relaxed text-white/55">
+                  Every release and refund in Belay links to its transaction
+                  hash — paste it into any Stellar explorer to check it
+                  yourself.
                 </p>
               </div>
             </div>
+
+            <p className="text-2xs leading-relaxed text-white/35">
+              Illustrative panel. Values shown are examples; real agreements
+              link to live testnet transactions.
+            </p>
           </motion.div>
         </div>
       </div>

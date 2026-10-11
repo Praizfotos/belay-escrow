@@ -1,26 +1,21 @@
 ﻿<p align="center">
-  <img src="public/logo.svg" alt="SettleX Logo" height="52" />
+  <img src="public/brand/logo-horizontal.svg" alt="Belay" height="52" />
 </p>
 
-<h1 align="center">SettleX — Split Bills. Pay On-Chain.</h1>
+<h1 align="center">Belay — Fund Work. Release It Milestone by Milestone.</h1>
 
 <p align="center">
-  A decentralised expense-splitting application built on the <strong>Stellar Network</strong>.<br/>
-  Add group expenses, split them by any method, and settle every share directly from your wallet — confirmed on-chain in under 5 seconds.
+  A non-custodial freelance milestone-escrow dApp built on the <strong>Stellar Network</strong>.<br/>
+  Agree a milestone schedule, fund it into an on-chain vault, and release each milestone with a verifiable Stellar transaction.
 </p>
 
 <p align="center">
-  <a href="https://stellar.expert/explorer/testnet/contract/CAXVH54JVEUCLDQQW45SMRFTCAAVUGVBT4SBVLAGYDQ2YMAPK6YL6ADI">
-    <img src="https://img.shields.io/badge/Contract-Testnet%20Deployed-4CAF50?style=flat-square&logo=stellar" alt="Contract Deployed" />
-  </a>
-  <a href="https://stellar.expert/explorer/testnet/tx/04c679c7ab7ec960db505038b4c6ec1f367e5d3caae013696bf3111e493de967">
-    <img src="https://img.shields.io/badge/Sample%20Tx-Verified-blue?style=flat-square&logo=stellar" alt="Sample Transaction" />
-  </a>
-  <a href="https://github.com/SnigdhaMandal/SettleX/actions/workflows/ci.yml">
-    <img src="https://github.com/SnigdhaMandal/SettleX/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline" />
+  <a href="https://github.com/SnigdhaMandal/Belay/actions/workflows/ci.yml">
+    <img src="https://github.com/SnigdhaMandal/Belay/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline" />
   </a>
   <img src="https://img.shields.io/badge/Network-Stellar%20Testnet-7B68EE?style=flat-square" alt="Stellar Testnet" />
-  <img src="https://img.shields.io/badge/Tests-45%20Passing-brightgreen?style=flat-square" alt="45 Tests Passing" />
+  <img src="https://img.shields.io/badge/Contracts-Soroban%20(Rust)-blue?style=flat-square&logo=rust" alt="Soroban Contracts" />
+  <img src="https://img.shields.io/badge/PWA-Installable-brightgreen?style=flat-square" alt="Installable PWA" />
 </p>
 
 <p align="center">
@@ -38,6 +33,7 @@
 - [Screenshots](#screenshots)
 - [How It Works](#how-it-works)
 - [Smart Contract](#smart-contract)
+- [Project Status & Production Roadmap](#project-status--production-roadmap)
 - [Submission Checklist Evidence](#submission-checklist-evidence)
 - [Setup Instructions](#setup-instructions)
 - [Environment Variables](#environment-variables)
@@ -51,53 +47,57 @@
 
 ## Project Description
 
-SettleX solves a fundamental problem with group expense sharing: apps like Splitwise only track IOUs — you still have to chase people for real money. SettleX closes the loop by connecting split calculations directly to on-chain payments.
+Getting paid for freelance or remote work across borders is slow and untrusting. Clients don't want to pay 100% up front; freelancers don't want to work for free. Belay closes the loop with **on-chain milestone escrow**: the client funds the agreed schedule into a Soroban vault contract, the freelancer submits each milestone, and the client releases the exact amount when satisfied.
 
-Every payment produces a **real, verifiable transaction hash** on the Stellar blockchain — that hash, checkable on any explorer, is the evidence a payment happened. An on-chain Soroban smart contract additionally records each settlement so participants share one append-only history. Those records are currently *self-attested*: the contract stores what the member submits without checking it against Horizon, so treat the Stellar transaction as the proof and the contract record as bookkeeping (see [Architecture and Limitations](docs/ARCHITECTURE_AND_LIMITATIONS.md)). The app syncs across all participants in real time — when someone pays, everyone sees it immediately.
+Every movement of value — funding, releasing, refunding — is a **real, verifiable Stellar transaction** against an escrow vault that holds a SEP-41 token (USDC on testnet by default). The vault's `fund`/`release`/`refund` entry points are authorized by the agreement contract, so tokens can only move along a path the milestone rules allow. A single agreement contract records the schedule and the rules; a companion vault contract holds the funds. The app syncs the agreement state across both parties in real time.
 
 **Core design principles:**
 
-- **Non-custodial** — your private key never leaves your wallet extension. SettleX only receives the signed transaction envelope.
-- **No intermediary** — money moves peer-to-peer between Stellar wallets; the app never holds funds.
-- **On-chain receipts** — every settled share has a Stellar transaction hash you can verify on [stellar.expert](https://stellar.expert/explorer/testnet).
-- **Multi-wallet** — supports Freighter, xBull, Lobstr, and Rabet with install detection. WalletConnect (mobile wallets) is documented as a one-step add in [docs/WALLET_INTEGRATION.md](docs/WALLET_INTEGRATION.md).
+- **Non-custodial** — your private key never leaves your wallet extension. Belay only receives the signed transaction envelope, and funds live in the contract, never in an account we control.
+- **Real escrow, not a receipt log** — the vault transfers an actual SEP-41 token in and out; the payment and the record are the same atomic on-chain event.
+- **On-chain receipts** — every fund, submit, release, and refund has a Stellar transaction hash you can verify on [stellar.expert](https://stellar.expert/explorer/testnet).
+- **Multi-wallet** — supports Freighter, xBull, Lobstr, and Rabet via the maintained Stellar Wallets Kit, with WalletConnect documented as a one-step add in [docs/WALLET_INTEGRATION.md](docs/WALLET_INTEGRATION.md).
+
+> **Trust model, stated plainly.** Disputes are resolved by a single configured **arbitrator** address, and the deploying **admin** key can upgrade the contracts. This is a deliberate MVP trade-off, not trust-minimized escrow. See [Architecture and Limitations](docs/ARCHITECTURE_AND_LIMITATIONS.md) and [§9 of the conversion guide](docs/PRODUCT_CONVERSION_GUIDE.md).
 
 ---
 
+## Features
 
-
-| Feature                                                      | Status |
-| ------------------------------------------------------------ | ------ |
-| Multi-wallet connect (Freighter, xBull, Lobstr, Rabet)      | Live   |
-| Create and split expenses — equal, percentage, custom weight | Live   |
-| Pay shares with XLM (Stellar Payment operation)              | Live   |
-| SEP-0007 QR code generation for mobile wallets               | Live   |
-| Transaction hash receipt linked to Stellar Explorer          | Live   |
-| Soroban contract: append-only on-chain settlement records     | Live   |
-| Real-time event listening from contract (`pmt_rec` events)   | Live   |
-| Attestor-backed payment verification                         | Not live yet |
-| Trip mode — group expenses with net-balance settle-up        | Live   |
-| Live cross-user sync via Supabase Realtime                   | Live   |
-| Net-balance algorithm (minimises transactions needed)        | Live   |
-| Mobile-responsive UI                                         | Live   |
+| Feature | Status |
+| --- | --- |
+| Multi-wallet connect (Freighter, xBull, Lobstr, Rabet) | Live |
+| Create an agreement + milestone schedule | Live |
+| Fund an agreement into an on-chain escrow vault (SEP-41 token / USDC) | Live |
+| Submit a milestone with evidence | Live |
+| Release / approve a milestone | Live |
+| Refund an overdue milestone to the client | Live |
+| Cancel an agreement and refund unspent balance | Live |
+| Dispute + arbitrator resolution | Live (single arbitrator) |
+| Transaction hash receipt linked to Stellar Explorer | Live |
+| Real-time event listening from the contract | Live |
+| Live cross-user sync via Supabase Realtime | Live |
+| Sign-In-With-Stellar (signed challenge identity) | Live |
+| Installable PWA with offline fallback | Live |
+| Multi-sig / staking arbitrator, trust-minimized escrow | Roadmap |
 
 ---
 
 ## Tech Stack
 
-| Layer            | Technology                                     |
-| ---------------- | ---------------------------------------------- |
-| Framework        | Next.js 14 (App Router, TypeScript)            |
-| Styling          | Tailwind CSS 3.4, Framer Motion                |
-| Blockchain SDK   | `@stellar/stellar-sdk` v14                     |
-| Wallet support   | `@creit.tech/stellar-wallets-kit` v2          |
-| Smart contract   | Soroban (Rust, `soroban-sdk` v21)              |
-| Network          | Stellar Testnet (Horizon + Soroban RPC)        |
-| Database         | Supabase (PostgreSQL + Realtime)               |
-| QR codes         | `qrcode.react`                                 |
-| Testing          | Jest 29 + ts-jest (45 unit tests)              |
-| State management | React Context + Supabase + localStorage        |
-| UI primitives    | Radix UI, Lucide React                         |
+| Layer | Technology |
+| --- | --- |
+| Framework | Next.js 14 (App Router, TypeScript) |
+| Styling | Tailwind CSS 3.4, Framer Motion |
+| Blockchain SDK | `@stellar/stellar-sdk` v14 |
+| Wallet support | `@creit.tech/stellar-wallets-kit` v2 |
+| Smart contracts | Soroban (Rust, `soroban-sdk` v27) |
+| Network | Stellar Testnet (Horizon + Soroban RPC) |
+| Database | Supabase (PostgreSQL + Realtime) |
+| PWA | `@serwist/next` (Serwist) |
+| Testing | Jest 29 + ts-jest; Rust inter-contract tests |
+| State management | React Context + Supabase + localStorage |
+| UI primitives | Radix UI, Lucide React |
 
 ---
 
@@ -107,49 +107,15 @@ Every payment produces a **real, verifiable transaction hash** on the Stellar bl
 
 ![Home](public/home.png)
 
----
-
-### Dashboard — Wallet Connected & Balance Displayed
-
-The dashboard shows your connected public key, live XLM balance fetched from Horizon, and the Testnet indicator.
+### Dashboard — Wallet Connected & Escrow Balance
 
 ![Dashboard](public/Dashboard.png)
 
----
-
-### Expenses — Wallet Options & Split View
-
-The multi-wallet selector lets users connect via Freighter, xBull, or Lobstr. Wallets not installed show an "Install" badge. Below it the expenses list shows split breakdowns with Pay XLM buttons per share.
-
-![Expenses](public/expencess.png)
-
----
-
-### Trips Overview
-
-![Trips](public/trips.png)
-
----
-
-### New Expense Form
-
-Define members, set amounts, and choose the split mode (equal / percentage / custom weight). The form calculates each share in real time.
-
-![New Expense Form](public/new_expencess_form.png)
-
----
-
-### Test Output — 45 Tests Passing
-
-All three test suites passing with Jest + ts-jest.
+### Test Output
 
 ![Test Output](public/test_pass.png)
 
----
-
 ### Deployment Proof (CLI)
-
-Fresh testnet deployment output and contract ID confirmation.
 
 ![Deployment Proof](public/deployment.png)
 
@@ -158,95 +124,125 @@ Fresh testnet deployment output and contract ID confirmation.
 ## How It Works
 
 ```
-User connects wallet (Freighter / xBull / Lobstr)
+Client connects wallet (Freighter / xBull / Lobstr / Rabet)
               |
-User creates expense, adds members, picks split mode
+Client creates an agreement + milestone schedule
               |
-App calculates each member's exact share
-              |
-Payer clicks "Pay XLM"
-              |
-    +---------+-----------+
-    |                     |
-buildTransaction()    checkIsPaid()     <- on-chain duplicate check (Soroban)
-    |
-TransactionBuilder constructs Payment operation
-  · from:   payer public key
-  · to:     payee Stellar address
-  · amount: share amount in XLM
-  · memo:   expense ID
-    |
+Client funds the agreement  ──►  vault.fund()
+              |                     (escrow vault receives the SEP-41 token)
 Wallet extension signs client-side
 (private key never leaves the browser)
-    |
-Signed envelope submitted to Horizon REST API
-    |
-Stellar validators confirm in ~5 seconds
-    |
-recordPaymentOnChain() stores to Soroban contract:
-  trip_id, expense_id, payer, member, amount, tx_hash
-    |
-tx hash stored in app, share marked "paid"
-useContractEvents polls every 10s -> syncs state for all participants
+              |
+Signed envelope submitted to Soroban RPC
+              |
+Freelancer submits a milestone (evidence)  ──►  agreement.submit_milestone()
+              |
+Client approves  ──►  agreement approves  ──►  vault.release()
+              |                                    (token → freelancer)
+  ...or it is overdue  ──►  vault.refund()  (token → client)
+  ...or it is disputed ──►  arbitrator resolves (release or refund)
+              |
+Contract events emitted; useContractEvents polls and syncs all participants
 ```
 
 ---
 
 ## Smart Contract
 
-SettleX deploys a **Soroban smart contract** on Stellar Testnet as an immutable, tamper-proof ledger of all settled payments.
+Belay deploys **two Soroban contracts** to Stellar Testnet from a single `belay-contract` crate:
+
+- **Agreement contract** — records agreements and milestones and decides *when* value moves.
+- **Escrow vault contract** — holds the SEP-41 token and is the only code that moves it. Its `fund`/`release`/`refund` entry points require authorization from the agreement contract (its `controller`).
 
 ### Deployed Contracts (Testnet)
 
+> **Proof values to regenerate.** After running [`scripts/deploy-contract.sh`](scripts/deploy-contract.sh), replace the placeholders below with the printed IDs and the resulting fund→release transaction hash.
+
 | Contract Role | Contract ID | Explorer |
-| ------------- | ----------- | -------- |
-| Settlement contract | `CAXVH54JVEUCLDQQW45SMRFTCAAVUGVBT4SBVLAGYDQ2YMAPK6YL6ADI` | [View](https://stellar.expert/explorer/testnet/contract/CAXVH54JVEUCLDQQW45SMRFTCAAVUGVBT4SBVLAGYDQ2YMAPK6YL6ADI) |
-| Pool contract | `CB4P4EXLGS56IXVNU3PLJO2BHF5BEEPBBYJAHXEPZDSD2OISQIGO53JA` | [View](https://stellar.expert/explorer/testnet/contract/CB4P4EXLGS56IXVNU3PLJO2BHF5BEEPBBYJAHXEPZDSD2OISQIGO53JA) |
+| --- | --- | --- |
+| Belay agreement contract | `<BELAY_CONTRACT_ID>` | [View](https://stellar.expert/explorer/testnet/contract/<BELAY_CONTRACT_ID>) |
+| Escrow vault contract | `<VAULT_CONTRACT_ID>` | [View](https://stellar.expert/explorer/testnet/contract/<VAULT_CONTRACT_ID>) |
+| Escrow token (USDC SAC) | `<ESCROW_TOKEN_ID>` | [View](https://stellar.expert/explorer/testnet/contract/<ESCROW_TOKEN_ID>) |
 
 Network: Stellar Testnet  
-Language: Rust (`soroban-sdk` v21.7.6)
+Language: Rust (`soroban-sdk` v27)
 
 ### Verified On-Chain Transactions
 
-- Settlement deploy tx: [826092e11281bd8fe3c8997ef0a4886b1bd3728069c6855ec4e3866f0a8f9d06](https://stellar.expert/explorer/testnet/tx/826092e11281bd8fe3c8997ef0a4886b1bd3728069c6855ec4e3866f0a8f9d06)
-- Pool deploy tx: [fa245da3ce0a478a9146cccdfa0b1b7f918985c0c138dec3f061f104e5b8f39e](https://stellar.expert/explorer/testnet/tx/fa245da3ce0a478a9146cccdfa0b1b7f918985c0c138dec3f061f104e5b8f39e)
-- Pool init tx (`pool_ini`): [a04a0a2f79e06448156b52ebd07060281cab5bee323889e92c584e0aaf50546d](https://stellar.expert/explorer/testnet/tx/a04a0a2f79e06448156b52ebd07060281cab5bee323889e92c584e0aaf50546d)
-- Settlement init tx (`stx_ini`): [f05c2f59f980a00e99f3f00d57e22b8b10fd0405064096273fd912c9b05a037e](https://stellar.expert/explorer/testnet/tx/f05c2f59f980a00e99f3f00d57e22b8b10fd0405064096273fd912c9b05a037e)
-- Inter-contract settlement proof tx (`record_payment` + internal pool `withdraw`): [04c679c7ab7ec960db505038b4c6ec1f367e5d3caae013696bf3111e493de967](https://stellar.expert/explorer/testnet/tx/04c679c7ab7ec960db505038b4c6ec1f367e5d3caae013696bf3111e493de967)
+> Replace with the transactions from your deployment and end-to-end run.
 
-The final proof transaction above is verifiable evidence of the inter-contract path: settlement `record_payment` triggered pool `withdraw` in the same on-chain execution.
+- Agreement deploy tx: `<TX_HASH>`
+- Vault deploy tx: `<TX_HASH>`
+- Vault init tx (`init_vault`): `<TX_HASH>`
+- Agreement init tx (`init`): `<TX_HASH>`
+- End-to-end fund → release proof tx (agreement release triggers vault transfer): `<TX_HASH>`
 
-Security hardening note:
-- Pool credits are now admin-managed in the pool contract to prevent untrusted self-crediting.
-- Pool `withdraw` requires auth from **both** the configured settlement contract and the member. Credits can therefore only be consumed as part of a `record_payment` call — a member cannot drain their own credits directly, and no other contract can spend them. Rotating `set_settlement_contract` immediately revokes the previous contract's ability to withdraw.
-- Settlement records now carry an `attested` flag. With no attestor configured a record is **self-attested** — it proves only that a member wrote a string, and the contract verifies neither the `payer`, the `amount`, nor the `tx_hash` against Horizon. Treat the Stellar transaction on the explorer as the evidence, not the in-app record. `set_attestor` makes a verifier's co-signature mandatory and marks records `attested: true`; the verifier service itself is not yet built, so attestor-backed verification is not live in this repo.
-- `clear_paid` (admin-only) clears the `ExpensePaid` flag, so a bogus or mistaken record can no longer permanently block the legitimate one. It preserves the original entry in trip history.
+The final proof transaction is verifiable evidence of the inter-contract path: an agreement milestone release triggers the vault to transfer the escrowed token to the freelancer in the same on-chain execution.
 
-> **Redeploy required.** `PaymentRecord` gained a field and `CONTRACT_VERSION` is now `2`. Records written by a v1 deployment cannot be read by this build — deploy fresh contracts and update `NEXT_PUBLIC_CONTRACT_ID`.
+### Contract Functions
+
+**Agreement contract**
+
+| Function | Type | Purpose |
+| --- | --- | --- |
+| `init(admin, vault)` | Write | Bind the admin and the vault contract address |
+| `create_agreement(...)` | Write | Create an agreement with its milestone schedule |
+| `add_milestone(...)` | Write | Add a milestone (amount, description, optional due date) |
+| `fund_agreement(...)` | Write | Authorize the vault to pull the funded token |
+| `submit_milestone(...)` | Write | Freelancer marks a milestone submitted with evidence |
+| `approve_milestone(...)` | Write | Client releases the milestone → vault pays freelancer |
+| `refund_overdue_milestone(...)` | Write | Return an overdue milestone's funds to the client |
+| `dispute(...)` / `resolve(...)` | Write | Raise / resolve a dispute (arbitrator) |
+| `cancel_agreement(...)` | Write | Cancel and refund unspent balance |
+| `get_agreement(...)` / `get_milestone(...)` | Read | Read state |
+
+**Escrow vault contract**
+
+| Function | Type | Purpose |
+| --- | --- | --- |
+| `init_vault(admin, controller, token)` | Write | Bind admin, controller (agreement contract), and SEP-41 token |
+| `fund(...)` / `release(...)` / `refund(...)` | Write | Move the token under controller authorization |
+| `balance()` | Read | Current escrowed balance |
+
+**Error codes handled by the frontend** (decoded from Soroban contract errors):
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| #1 | `InvalidAmount` | Amount is zero or negative |
+| #2 | `AlreadyPaid` | This milestone was already released |
+| #3 | `EmptyId` | An id is an empty string |
+| #101+ | `VaultErrorCode` | Vault-specific failures (uninitialized, insufficient balance, …) |
+
+### Why Two Contracts?
+
+The separation keeps custody and policy apart: the agreement contract encodes the milestone rules, and the vault contract is the *only* thing that ever holds or moves tokens. Because the vault trusts only its controller, an agreement bug cannot be paired with an arbitrary external spender, and rotating the controller (`set_controller`) immediately revokes the previous contract's authority.
+
+### Real-Time Events
+
+The contracts emit events for every state change (agreement created, milestone added, funded, submitted, released, refunded, disputed, cancelled). `hooks/useContractEvents.ts` polls the Soroban RPC and merges deduplicated events into React state, so both participants see confirmed changes without refreshing.
 
 ---
 
 ## Project Status & Production Roadmap
 
-**Status: Testnet beta.** SettleX runs entirely on Stellar **Testnet** — no real
-funds move yet. Settlement currently uses native **XLM**. USDC settlement,
-verified on-chain settlement, broader wallet support, and a Mainnet launch are on
-the roadmap. We state exactly where we are rather than overselling.
+**Status: Testnet beta.** Belay runs entirely on Stellar **Testnet** — no real funds move yet. Dispute resolution is a single arbitrator, and the admin key can upgrade the contracts; both are documented honestly rather than hidden.
 
-The complete, honest plan to take SettleX from project to shipped product —
-including the known trust gaps and how each one is closed — lives in
-**[docs/PRODUCT_CONVERSION_GUIDE.md](docs/PRODUCT_CONVERSION_GUIDE.md)**.
+The complete plan to take Belay from project to shipped product — including every known trust gap and how it is closed — lives in **[docs/PRODUCT_CONVERSION_GUIDE.md](docs/PRODUCT_CONVERSION_GUIDE.md)**.
 
 | Area | Today | Next |
 | --- | --- | --- |
 | Network | Stellar Testnet | Mainnet (after a contract audit) |
-| Settlement asset | XLM (native) | USDC via Stellar path payments |
-| Settlement integrity | On-chain receipt log (tx hash stored; not yet verified in-contract) | Verified / atomic on-chain settlement |
+| Escrow asset | SEP-41 token (USDC on testnet) | Curated stablecoin allowlist on mainnet |
+| Dispute resolution | Single arbitrator key | Multi-sig / staking appeal mechanism |
+| Upgrade authority | Deploying admin | Timelock / multisig, or renounced |
+| Settlement integrity | Real vault custody (atomic token transfer) | Audited contracts |
 | Wallets | Freighter, xBull, Lobstr, Rabet | + WalletConnect (mobile), passkey smart wallets |
 | App shell | Installable PWA, nonce-based CSP | Push notifications, offline reads |
-| Identity | Wallet address (client-supplied) | Sign-In-With-Stellar (signed challenge) |
+| Identity | Sign-In-With-Stellar (signed challenge) | Passkey onboarding for non-crypto users |
 
 Verified locally with `npm run build`, `npm run lint`, and `npm test`.
+
+---
 
 ## Submission Checklist Evidence
 
@@ -254,42 +250,14 @@ This section maps the required submission checklist to concrete proof in this re
 
 | Requirement | Proof |
 | --- | --- |
-| Public GitHub repository | https://github.com/SnigdhaMandal/SettleX |
-| README with complete documentation | This file plus final docs links in [Final Documentation Package](#final-documentation-package) |
-| Minimum 8+ meaningful commits | Local repository history: 44 commits |
+| Public GitHub repository | https://github.com/SnigdhaMandal/Belay |
+| README with complete documentation | This file plus links in [Final Documentation Package](#final-documentation-package) |
+| Minimum 8+ meaningful commits | Git history — verify the count before submission |
 | Live demo link | [https://settle-x-pi.vercel.app/](https://settle-x-pi.vercel.app/) |
-| Screenshot: mobile responsive view | UI pages were hardened for mobile in Phase 9. Add one fresh phone viewport screenshot to `public/mobile-responsive.png` and reference it here before final submission. |
+| Screenshot: mobile responsive view | Responsive across landing/auth/dashboard/agreements. Add one fresh phone viewport screenshot to `public/mobile-responsive.png` and reference it here before final submission. |
 | Screenshot or badge: CI/CD pipeline running | CI badge at the top of this README (GitHub Actions `ci.yml`) |
 | Contract addresses and transaction hash (inter-contract) | [Deployed Contracts](#deployed-contracts-testnet) and [Verified On-Chain Transactions](#verified-on-chain-transactions) |
-| Token or pool address (if custom token or pool deployed) | Pool contract in [Deployed Contracts](#deployed-contracts-testnet) |
-
-### Contract Functions
-
-| Function                                                              | Type  | Purpose                                                 |
-| --------------------------------------------------------------------- | ----- | ------------------------------------------------------- |
-| `record_payment(trip_id, expense_id, payer, member, amount, tx_hash)` | Write | Stores payment record on-chain after XLM transfer       |
-| `get_payments(trip_id, offset, limit)`                                | Read  | Returns a bounded page of expense payment shards        |
-| `is_paid(expense_id, member)`                                         | Read  | Checks if a member has already settled a specific share |
-
-**Error codes handled by the frontend:**
-
-| Code | Name            | Meaning                                  |
-| ---- | --------------- | ---------------------------------------- |
-| #1   | `InvalidAmount` | Payment amount is zero or negative       |
-| #2   | `AlreadyPaid`   | This share was already settled on-chain  |
-| #3   | `EmptyId`       | Trip ID or expense ID is an empty string |
-
-### Why a Smart Contract?
-
-In a Horizon-only setup there is no shared source of truth for payment status — any user could mark a share as paid without actually transferring XLM. The Soroban contract solves this:
-
-- `record_payment` stores the real Stellar `tx_hash` as proof of transfer.
-- `is_paid` acts as a duplicate guard — re-settling an already-paid share is rejected on-chain with `AlreadyPaid (#2)`.
-- All records are permanently on the Stellar ledger and cannot be modified or deleted by anyone, including the app operator.
-
-### Real-Time Events
-
-The contract emits a `pmt_rec` event for every confirmed payment. `hooks/useContractEvents.ts` polls the Soroban RPC every 10 seconds and on browser tab focus. New events are deduplicated by `txHash` and merged into React state — all participants see confirmed payments without refreshing the page.
+| Token or vault address (custom token/contract deployed) | Escrow vault contract + escrow token in [Deployed Contracts](#deployed-contracts-testnet) |
 
 ---
 
@@ -297,17 +265,17 @@ The contract emits a `pmt_rec` event for every confirmed payment. `hooks/useCont
 
 ### Prerequisites
 
-- **Node.js** v18 or later
-- **npm** v9 or later
-- **Freighter Wallet** browser extension — [freighter.app](https://freighter.app)
-  - In Freighter: Settings → Network → select **Testnet**
-- A funded Stellar Testnet account — get free XLM from [Stellar Friendbot](https://horizon-testnet.stellar.org/friendbot?addr=YOUR_PUBLIC_KEY)
+- **Node.js** v18 or later, **npm** v9 or later
+- **Freighter Wallet** browser extension — [freighter.app](https://freighter.app) (Settings → Network → **Testnet**)
+- A funded Stellar Testnet account — free XLM from [Stellar Friendbot](https://horizon-testnet.stellar.org/friendbot?addr=YOUR_PUBLIC_KEY)
+- The escrow token trustline enabled on the paying account (the app's **Enable escrow token** action does this)
+- (Contract work only) Rust + the Stellar CLI — see [docs/RUNBOOK.md](docs/RUNBOOK.md)
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/SnigdhaMandal/SettleX.git
-cd SettleX
+git clone https://github.com/SnigdhaMandal/Belay.git
+cd Belay
 ```
 
 ### 2. Install dependencies
@@ -318,12 +286,12 @@ npm install
 
 ### 3. Create a Supabase project
 
-SettleX uses Supabase for real-time cross-user sync. Without it, data only persists locally in the current browser session.
+Belay uses Supabase for real-time cross-user sync. Without it, data only persists locally in the current browser.
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In the SQL Editor, run the full schema from [`supabase-setup.sql`](supabase-setup.sql) (or follow [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for a walkthrough).
+2. In the SQL Editor, run the full schema from [`supabase-setup.sql`](supabase-setup.sql) (or follow [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)).
 3. Copy your **Project URL** and **anon key** from Project Settings → API.
-4. Copy your **JWT Secret** from the same page into `SUPABASE_JWT_SECRET`. Row Level Security authorizes on a `wallet_address` claim that the app's server signs with this secret — without it, every database call is rejected. See [Wallet Authentication](#wallet-authentication).
+4. Copy your **JWT Secret** from the same page into `SUPABASE_JWT_SECRET`.
 
 ### 4. Configure environment variables
 
@@ -331,7 +299,7 @@ SettleX uses Supabase for real-time cross-user sync. Without it, data only persi
 cp .env.local.example .env.local
 ```
 
-Fill in your Supabase credentials. The contract ID and RPC URL are pre-filled with the deployed testnet values. See [Environment Variables](#environment-variables) for the full reference.
+The Stellar testnet contract values are pre-filled. See [Environment Variables](#environment-variables) for the full reference.
 
 ### 5. Start the development server
 
@@ -339,7 +307,7 @@ Fill in your Supabase credentials. The contract ID and RPC URL are pre-filled wi
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and connect your Freighter wallet (set to Testnet).
+Open [http://localhost:3000](http://localhost:3000) and connect your wallet (set to Testnet).
 
 ### 6. Build for production
 
@@ -358,22 +326,24 @@ Create (or edit) `.env.local` in the project root:
 # Stellar Network
 NEXT_PUBLIC_STELLAR_NETWORK=TESTNET
 NEXT_PUBLIC_HORIZON_URL=https://horizon-testnet.stellar.org
+NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 NEXT_PUBLIC_STELLAR_EXPLORER=https://stellar.expert/explorer/testnet
 
-# Soroban Smart Contract (deployed — no changes needed)
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-NEXT_PUBLIC_CONTRACT_ID=CAXVH54JVEUCLDQQW45SMRFTCAAVUGVBT4SBVLAGYDQ2YMAPK6YL6ADI
+# Belay contracts (deployed — see scripts/deploy-contract.sh)
+NEXT_PUBLIC_CONTRACT_ID=<belay-agreement-contract-id>
+NEXT_PUBLIC_VAULT_CONTRACT_ID=<escrow-vault-contract-id>
+NEXT_PUBLIC_ESCROW_TOKEN_ID=<sep-41-token-id>
 
-# Supabase (from Project Settings → API in your Supabase dashboard)
+# Supabase (Project Settings → API)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 
 # App
-NEXT_PUBLIC_APP_NAME=SettleX
-NEXT_PUBLIC_APP_VERSION=1.0.0
+NEXT_PUBLIC_APP_NAME=Belay
+NEXT_PUBLIC_APP_VERSION=0.1.0
 
 # ─── Server-only — never prefix these with NEXT_PUBLIC_ ─────────────────────
-# Supabase Dashboard → Settings → API → JWT Secret.
+# Supabase Dashboard → Settings → API → JWT Secret. Required to authorize RLS.
 SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 # Binds an auth challenge to the wallet it was issued to. Required in
 # production and must differ from SUPABASE_JWT_SECRET (the server refuses to
@@ -381,11 +351,14 @@ SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 AUTH_CHALLENGE_SECRET=
 # Optional. Session lifetime in seconds (default 43200 = 12h, max 86400).
 AUTH_SESSION_TTL_SECONDS=43200
+# Required for multi-instance deploys: backs the shared replay guard, rate
+# limiter, and revocation tables.
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 > Variables with the `NEXT_PUBLIC_` prefix are read client-side and are inlined into the JavaScript bundle — treat every one of them as public. The Supabase anon key is safe to expose because access is governed by Row Level Security.
 >
-> `SUPABASE_JWT_SECRET` and `AUTH_CHALLENGE_SECRET` are **not** public. They are read only inside the `/api/auth/*` route handlers. Prefixing either with `NEXT_PUBLIC_` would ship it to every visitor and let anyone mint a token for any wallet.
+> `SUPABASE_JWT_SECRET`, `AUTH_CHALLENGE_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` are **not** public. They are read only inside server route handlers. Prefixing any with `NEXT_PUBLIC_` would ship it to every visitor and let anyone mint a token for any wallet.
 
 ---
 
@@ -396,11 +369,9 @@ Your Stellar address is your identity, and the app proves you control it before 
 1. **Challenge** — `POST /api/auth/challenge` returns a transaction built for your address with **sequence number 0**, carrying a random nonce. Sequence 0 is always below an account's real sequence, so the network can never accept it: it is signable but unsubmittable, and costs no fee.
 2. **Sign** — your wallet (Freighter, xBull, Lobstr) signs it locally. Your private key never leaves the extension.
 3. **Verify** — `POST /api/auth/verify` checks the signature against the claimed public key and, only on success, mints a short-lived Supabase JWT whose `wallet_address` claim carries the proven address. The token is signed with `SUPABASE_JWT_SECRET`, which never reaches the browser.
-4. **Authorize** — every RLS policy reads that claim via `public.settlex_wallet()`. Requests without a valid token get no rows at all.
+4. **Authorize** — every RLS policy reads that claim via `public.belay_wallet()`. Requests without a valid token get no rows at all.
 
-The token is cached in `localStorage` and reused until it expires (12 hours by default), so you sign roughly once a day rather than once per action.
-
-> **Upgrading an existing deployment:** earlier versions authorized on an `x-wallet-address` request header that the browser set itself. Because the anon key is public, anyone could send that header with any address and read or modify every user's data. Re-run [`supabase-setup.sql`](supabase-setup.sql) to replace those policies and set `SUPABASE_JWT_SECRET`. Until you do, the data layer is effectively unauthenticated.
+The token is cached in `localStorage` (`belay:session`) and reused until it expires (12 hours by default), so you sign roughly once a day rather than once per action. Signing out writes the token's `jti` to `public.revoked_tokens`, so a signed-out token matches no row. See [docs/AUTHENTICATION_SETUP.md](docs/AUTHENTICATION_SETUP.md).
 
 ---
 
@@ -412,19 +383,13 @@ The token is cached in `localStorage` and reused until it expires (12 hours by d
 npm test
 ```
 
-For coverage report:
+For a coverage report:
 
 ```bash
 npm run test:coverage
 ```
 
-| Test file                                 | Coverage                                                                                     |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `__tests__/split/calculator.test.ts`      | Equal split, custom/weighted split, amount validation, Stellar address format checks         |
-| `__tests__/settlement/netBalance.test.ts` | Net-balance algorithm: simple debt, netting, three-person chains, wallet address passthrough |
-| `__tests__/utils/formatters.test.ts`      | `formatAddress`, `formatXLM`, `stroopsToXlm` conversions                                     |
-
-**45 tests across 3 suites — all passing.** See the test output screenshot in [Screenshots](#screenshots).
+Suites cover the escrow planner and status logic, contract error decoding, event parsing, Supabase row guards and privacy rules, the offline cache isolation in `AgreementContext`, auth (challenge, JWT, rate limiting, revocation), observability/redaction, and CSP. See the test output screenshot in [Screenshots](#screenshots).
 
 ### Rust contract tests
 
@@ -433,77 +398,49 @@ cd contract
 cargo test
 ```
 
-8 tests: `record_and_query`, `multiple_members`, `multiple_expenses_same_trip`, `duplicate_payment_rejected`, `zero_amount_rejected`, `negative_amount_rejected`, `is_paid_unknown_returns_false`, `get_payments_unknown_trip_is_empty`.
+Covers agreement lifecycle, milestone state transitions, funding, release/refund paths, and the inter-contract call into the vault.
 
 ---
 
 ## Project Structure
 
 ```
-settlex/
+belay/
 ├── app/
-│   ├── page.tsx                  # Landing page
-│   ├── auth/page.tsx             # Authentication
-│   ├── dashboard/page.tsx        # Dashboard (wallet + balance)
-│   ├── expenses/page.tsx         # Expense list and management
-│   ├── trips/
-│   │   ├── page.tsx              # Trip list
-│   │   └── [id]/page.tsx         # Trip detail — expenses + settle-up tab
-│   └── api/auth/
-│       ├── challenge/route.ts    # Issues the challenge transaction to sign
-│       └── verify/route.ts       # Verifies the signature, mints the Supabase JWT
+│   ├── page.tsx                    # Landing page
+│   ├── auth/page.tsx               # Authentication
+│   ├── dashboard/page.tsx          # Dashboard (wallet + escrow balance)
+│   ├── agreements/
+│   │   ├── page.tsx                # Agreement list
+│   │   ├── new/page.tsx            # Create agreement + milestones
+│   │   └── [id]/page.tsx           # Agreement detail — milestone board
+│   ├── manifest.ts, sw.ts          # PWA manifest + Serwist service worker
+│   └── api/auth/                   # challenge / verify / signout routes
 │
 ├── components/
-│   ├── landing/                  # Hero, Features, HowItWorks, Pricing, Testimonials
-│   ├── expenses/                 # ExpenseForm, SplitCalculator, PaymentRow, ReceiptModal
-│   ├── payment/                  # PayButton, PaymentStatus, QRCodeDisplay, TransactionHash
-│   ├── trips/                    # TripCard, TripForm, ExpenseList, SettlementSummary
-│   ├── wallet/                   # ConnectWalletButton, WalletInfo, WalletGuard
-│   └── ui/                       # Button, Modal, Badge, Spinner, Toast, Logo
+│   ├── landing/                    # Hero, Features, HowItWorks
+│   ├── agreements/                # AgreementForm, MilestoneForm/List, DisputeDialog, EscrowSummary
+│   ├── payment/                    # FundButton, EscrowStatus, TransactionHash
+│   ├── wallet/                     # ConnectWalletButton, WalletInfo, NetworkGuardBanner
+│   └── ui/                         # Button, Modal, Badge, Spinner, Toast, Logo
 │
-├── context/
-│   ├── ExpenseContext.tsx        # Global expense state
-│   ├── TripContext.tsx           # Global trip state
-│   ├── AuthContext.tsx           # Authentication state
-│   └── WalletContext.tsx         # Wallet connection state
-│
-├── hooks/
-│   ├── useWallet.ts              # Multi-wallet connection (StellarWalletsKit)
-│   ├── useExpense.ts             # Expense CRUD
-│   ├── useTrip.ts                # Trip CRUD
-│   ├── usePayment.ts             # Full 7-state payment flow orchestration
-│   └── useContractEvents.ts      # Real-time Soroban event polling
+├── context/                        # AuthContext, AgreementContext, MilestoneContext, WalletContext
+├── hooks/                          # useWallet, useAgreement, useMilestone, useEscrow, useContractEvents
 │
 ├── lib/
-│   ├── auth/
-│   │   ├── challenge.ts          # Challenge build + signature verification (server)
-│   │   ├── jwt.ts                # Supabase access-token minting (server)
-│   │   ├── serverConfig.ts       # Server-only auth secrets
-│   │   └── rateLimit.ts          # Throttling for the public auth routes
-│   ├── supabase/session.ts       # Wallet-authenticated Supabase client (browser)
-│   ├── stellar/
-│   │   ├── walletsKit.ts         # Stellar Wallets Kit adapter
-│   │   ├── contract.ts           # Soroban contract calls + error decoding
-│   │   ├── events.ts             # pmt_rec event fetch and decode
-│   │   ├── buildTransaction.ts   # Stellar Payment transaction builder
-│   │   ├── submitTransaction.ts  # Horizon broadcast
-│   │   └── getBalance.ts         # Account balance query
-│   ├── qr/generator.ts           # SEP-0007 URI + QR generation
-│   └── settlement/netBalance.ts  # Net-balance optimisation algorithm
+│   ├── auth/                       # challenge, jwt, serverConfig, rateLimit (server)
+│   ├── escrow/                     # planner.ts, status.ts
+│   ├── supabase/                   # session, rowGuards, userDirectoryPrivacy
+│   ├── stellar/                    # walletsKit, contract, events, buildTransaction, submitTransaction
+│   ├── config/requirements.ts      # Build-time config validation
+│   └── observability/              # logger, redact, requestLog
 │
-├── contract/
-│   └── src/lib.rs                # Soroban smart contract source (Rust)
+├── contract/                       # Soroban contracts (Rust)
+│   └── src/{lib.rs,vault.rs,...}
 │
-├── __tests__/
-│   ├── split/calculator.test.ts
-│   ├── settlement/netBalance.test.ts
-│   └── utils/formatters.test.ts
+├── __tests__/                      # escrow, stellar, supabase, auth, observability, ...
 │
-└── docs/
-    ├── QUICKSTART.md
-    ├── SUPABASE_SETUP.md
-    ├── AUTHENTICATION_SETUP.md
-    └── MANUAL_TESTING_GUIDE.md
+└── docs/                           # Full documentation package (see below)
 ```
 
 ---
@@ -511,12 +448,12 @@ settlex/
 ## Testnet Notes
 
 - This app runs entirely on **Stellar Testnet** — no real funds are used.
-- Fund your Freighter testnet wallet with the Friendbot:
+- Fund your testnet wallet with Friendbot:
   ```
   https://horizon-testnet.stellar.org/friendbot?addr=YOUR_PUBLIC_KEY
   ```
+- Enable the escrow token trustline (the dashboard's **Enable escrow token** action) before funding an agreement.
 - All transactions and contract events are visible at [stellar.expert/explorer/testnet](https://stellar.expert/explorer/testnet).
-- The deployed contract address and sample transaction on this page can be verified live on the explorer at any time.
 
 ---
 
@@ -525,7 +462,7 @@ settlex/
 **Product & strategy**
 - [Product Conversion Guide](docs/PRODUCT_CONVERSION_GUIDE.md) — the full project→product roadmap
 - [Brand Guidelines](docs/BRAND.md)
-- [Wallet Integration](docs/WALLET_INTEGRATION.md) — supported wallets + adding WalletConnect
+- [Wallet Integration](docs/WALLET_INTEGRATION.md)
 
 **Getting started & testing**
 - [Quickstart](docs/QUICKSTART.md)
@@ -538,9 +475,10 @@ settlex/
 - [Production Runbook](docs/RUNBOOK.md)
 - [Requirement-to-Proof Matrix](docs/REQUIREMENT_PROOF_MATRIX.md)
 - [Architecture Assumptions and Known Limitations](docs/ARCHITECTURE_AND_LIMITATIONS.md)
+- [Observability](docs/OBSERVABILITY.md)
 
 ---
 
 ## License
 
-MIT © 2026 SettleX
+MIT © 2026 Belay

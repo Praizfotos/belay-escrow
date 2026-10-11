@@ -1,16 +1,6 @@
-[package]
-name    = "settlex-contract"
-version = "0.2.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-soroban-sdk = { version = "21.7.6" }
-
-[dev-dependencies]
-soroban-sdk = { version = "21.7.6", features = ["testutils"] }
+[workspace]
+members  = ["belay", "vault"]
+resolver = "2"
 
 [profile.release]
 opt-level        = "z"

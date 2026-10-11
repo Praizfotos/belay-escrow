@@ -3,7 +3,7 @@
  * `error.message` verbatim. Because the Supabase paths re-throw raw PostgREST
  * errors, that boundary could print
  *
- *   new row violates row-level security policy for table "expenses"
+ *   new row violates row-level security policy for table "agreements"
  *
  * at a user — leaking the schema and the fact that RLS is the gate.
  *
@@ -20,19 +20,19 @@ import {
 describe("internal detail is never shown to a user", () => {
   // Every entry is text that can actually reach a boundary in this app.
   const internal = [
-    ['row-level security', 'new row violates row-level security policy for table "expenses"'],
-    ["permission denied", "permission denied for table expenses"],
-    ["unique constraint", 'duplicate key value violates unique constraint "expenses_pkey"'],
-    ["missing relation", 'relation "public.expenses" does not exist'],
-    ["missing column", 'column "wallet_address" of relation "trips" does not exist'],
+    ['row-level security', 'new row violates row-level security policy for table "agreements"'],
+    ["permission denied", "permission denied for table agreements"],
+    ["unique constraint", 'duplicate key value violates unique constraint "agreements_pkey"'],
+    ["missing relation", 'relation "public.agreements" does not exist'],
+    ["missing column", 'column "wallet_address" of relation "milestones" does not exist'],
     ["PostgREST code", "PGRST301"],
     ["bare pg code", "42501"],
     ["token jargon", "JWT expired"],
     ["runtime TypeError", "TypeError: Cannot read properties of undefined (reading 'id')"],
     ["transport failure", "Failed to fetch"],
     ["network error", "NetworkError when attempting to fetch resource."],
-    ["developer invariant", "useExpenseContext must be used within <ExpenseProvider />"],
-    ["stack frame", "at ExpenseProvider (context/ExpenseContext.tsx:143:11)"],
+    ["developer invariant", "useAgreements must be used within <AgreementProvider />"],
+    ["stack frame", "at AgreementProvider (context/AgreementContext.tsx:143:11)"],
     ["JSON dump", '{"code":"42501","message":"permission denied"}'],
     ["a JWT", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig"],
     ["a bearer token", "Bearer tok_abc123"],
@@ -61,13 +61,13 @@ describe("messages the app wrote for users are still shown", () => {
     "Connection rejected in Freighter.",
     "Contract transaction timed out waiting for confirmation.",
     "Contract simulation returned an unexpected result.",
-    "Expense not found in state — please refresh and try again.",
+    "Agreement not found in state — please refresh and try again.",
     "Freighter did not return an address.",
     "Lobstr extension is not installed.",
     "Payment amount must be greater than zero.",
-    "Pool balance is insufficient for this transfer.",
+    "Vault balance is insufficient for this transfer.",
     // The contract decoder's fallback for an unmapped code.
-    "Pool error #137.",
+    "Vault error #137.",
     "Transaction cancelled in wallet.",
   ];
 

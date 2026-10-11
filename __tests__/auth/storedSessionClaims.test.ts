@@ -12,6 +12,10 @@
 import { LS_SESSION, SESSION_REFRESH_SKEW_SECONDS, WALLET_CLAIM } from "@/lib/auth/constants";
 import { readStoredSession } from "@/lib/supabase/session";
 
+// `session` imports the Freighter signing shim for its other functions; this
+// suite only reads cached claims, and the wallet kit is ESM-only under Jest.
+jest.mock("@/lib/freighter", () => ({ signXDR: jest.fn() }));
+
 const VICTIM = "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3";
 const ATTACKER = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
 

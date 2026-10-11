@@ -37,19 +37,20 @@ export default function ErrorBoundary({
   }, [error, correlationId, wasSuppressed]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[#F6F6F6] text-center">
-      <div className="max-w-md w-full bg-white rounded-2xl border p-6">
-        <h2 className="text-lg font-bold text-red-600 mb-2">Something went wrong</h2>
-        <p className="text-sm text-[#888] mb-6">{message}</p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-paper p-4 text-center">
+      <div className="card-flat w-full max-w-md p-6">
+        <h2 className="t-h3 mb-2 text-danger">Something went wrong</h2>
+        <p className="mb-6 text-sm text-muted">{message}</p>
         <button
+          type="button"
           onClick={() => reset()}
-          className="px-4 py-2 bg-[#0F0F14] text-white rounded-xl text-sm font-semibold hover:bg-black transition-colors w-full"
+          className="btn-primary w-full"
         >
           Try again
         </button>
         {/* Gives the user something to quote in a support report that points
             straight at the reported error. */}
-        <p className="mt-4 text-[11px] text-[#AAA] font-mono break-all">
+        <p className="mt-4 break-all font-mono text-2xs text-muted-faint">
           Reference: {error.digest ?? correlationId}
         </p>
       </div>

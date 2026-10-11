@@ -1,4 +1,9 @@
-describe("User Directory Privacy & Scoping (Issue #49)", () => {
+/**
+ * Mirrors the `users` RLS policy: a wallet may read its own profile, or the
+ * profile of a counterparty it shares an agreement with. It must not be able
+ * to enumerate the directory.
+ */
+describe("User Directory Privacy & Scoping", () => {
   const aliceWallet = "GALICE_WALLET_ADDRESS_1111111111111111111111111111111111";
   const bobWallet = "GBOB_WALLET_ADDRESS_222222222222222222222222222222222222";
   const strangerWallet = "GSTRANGER_WALLET_ADDRESS_3333333333333333333333333333333";
@@ -10,95 +15,57 @@ describe("User Directory Privacy & Scoping (Issue #49)", () => {
     { wallet_address: strangerWallet, display_name: "Stranger", created_at: "2026-08-03" },
   ];
 
-  const expenses = [
+  const agreements = [
     {
-      id: "exp-1",
-      created_by_wallet: aliceWallet,
-      member_wallets: [aliceWallet, bobWallet],
-      accepted_wallets: [aliceWallet, bobWallet],
-      shares: [
-        { walletAddress: aliceWallet, amount: "10" },
-        { walletAddress: bobWallet, amount: "10" },
-      ],
-    },
-  ];
-
-  const trips = [
-    {
-      id: "trip-1",
-      created_by_wallet: aliceWallet,
-      member_wallets: [aliceWallet, bobWallet],
-      accepted_wallets: [aliceWallet, bobWallet],
+      id: "agr-1",
+      client_wallet: aliceWallet,
+      freelancer_wallet: bobWallet,
     },
   ];
 
   /**
-   * Evaluator mirroring PostgreSQL RLS policy on users:
-   * "Users can view their own profile or counterparties"
+   * Evaluator mirroring the PostgreSQL RLS policy on users:
+   * "Users can view their own profile or counterparties".
    */
   function canViewUserRow(targetUserWallet: string, callerWallet: string): boolean {
     if (!callerWallet) return false;
 
-    // 1. Own profile
+    // 1. Own profile.
     if (targetUserWallet === callerWallet) return true;
 
-    // 2. Shared expense
-    const sharesExpense = expenses.some((e) => {
-      const callerInExpense =
-        e.member_wallets.includes(callerWallet) &&
-        e.accepted_wallets.includes(callerWallet);
-      const targetInExpense =
-        e.member_wallets.includes(targetUserWallet) &&
-        e.accepted_wallets.includes(targetUserWallet);
-      return callerInExpense && targetInExpense;
-    });
-    if (sharesExpense) return true;
-
-    // 3. Shared trip
-    const sharesTrip = trips.some(
-      (t) =>
-        t.member_wallets.includes(callerWallet) &&
-        t.accepted_wallets.includes(callerWallet) &&
-        t.member_wallets.includes(targetUserWallet) &&
-        t.accepted_wallets.includes(targetUserWallet)
+    // 2. Counterparty on a shared agreement — either direction.
+    const sharesAgreement = agreements.some(
+      (e) =>
+        (e.client_wallet === callerWallet && e.freelancer_wallet === targetUserWallet) ||
+        (e.freelancer_wallet === callerWallet && e.client_wallet === targetUserWallet),
     );
-    if (sharesTrip) return true;
 
-    return false;
+    return sharesAgreement;
   }
 
   it("allows a user to view their own profile", () => {
     expect(canViewUserRow(aliceWallet, aliceWallet)).toBe(true);
   });
 
-  it("allows a user to view counterparty profiles sharing an expense or trip", () => {
+  it("allows a user to view a counterparty profile from a shared agreement", () => {
     expect(canViewUserRow(bobWallet, aliceWallet)).toBe(true);
     expect(canViewUserRow(aliceWallet, bobWallet)).toBe(true);
   });
 
-  it("prevents an attacker or stranger from viewing unlinked user profiles (directory scraping blocked)", () => {
+  it("prevents an attacker or unrelated stranger from scraping profiles", () => {
     expect(canViewUserRow(aliceWallet, attackerWallet)).toBe(false);
     expect(canViewUserRow(bobWallet, attackerWallet)).toBe(false);
     expect(canViewUserRow(strangerWallet, attackerWallet)).toBe(false);
     expect(canViewUserRow(strangerWallet, aliceWallet)).toBe(false);
   });
 
-  it("does not treat a pending invitee as a counterparty", () => {
-    expenses[0].accepted_wallets = [aliceWallet];
-    trips[0].accepted_wallets = [aliceWallet];
-
-    expect(canViewUserRow(aliceWallet, bobWallet)).toBe(false);
-    expect(canViewUserRow(bobWallet, aliceWallet)).toBe(false);
-
-    expenses[0].accepted_wallets = [aliceWallet, bobWallet];
-    trips[0].accepted_wallets = [aliceWallet, bobWallet];
-  });
-
   it("filters directory queries to only return permitted counterparties", () => {
     const visibleToAlice = allUsers.filter((u) => canViewUserRow(u.wallet_address, aliceWallet));
     expect(visibleToAlice.map((u) => u.display_name)).toEqual(["Alice", "Bob"]);
 
-    const visibleToAttacker = allUsers.filter((u) => canViewUserRow(u.wallet_address, attackerWallet));
+    const visibleToAttacker = allUsers.filter((u) =>
+      canViewUserRow(u.wallet_address, attackerWallet),
+    );
     expect(visibleToAttacker).toEqual([]);
   });
 });

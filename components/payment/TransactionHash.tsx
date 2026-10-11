@@ -29,19 +29,21 @@ export function TransactionHash({ hash, className, compact = false }: Transactio
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 px-3 py-1.5 bg-[#F8F8F8] border border-[#E5E5E5] rounded-lg font-mono",
-        className
+        "inline-flex items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 font-mono",
+        className,
       )}
     >
-      <span className="text-xs text-[#555]">{display}</span>
+      <span className="text-xs text-muted">{display}</span>
 
       <button
+        type="button"
         onClick={handleCopy}
         title="Copy transaction hash"
-        className="text-[#AAA] hover:text-[#555] transition-colors"
+        aria-label="Copy transaction hash"
+        className="text-muted-faint transition-colors hover:text-ink"
       >
         {copied ? (
-          <Check size={12} className="text-[#2D6600]" />
+          <Check size={12} className="text-accent-ink" />
         ) : (
           <Copy size={12} />
         )}
@@ -52,7 +54,8 @@ export function TransactionHash({ hash, className, compact = false }: Transactio
         target="_blank"
         rel="noopener noreferrer"
         title="View on Stellar Expert"
-        className="text-[#AAA] hover:text-[#555] transition-colors"
+        aria-label="View transaction on Stellar Expert"
+        className="text-muted-faint transition-colors hover:text-ink"
       >
         <ExternalLink size={12} />
       </a>

@@ -300,8 +300,8 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     const timedOut = timedOutRef.value || (err as Error | null)?.name === "TimeoutError";
     throw new WalletSessionError(
       timedOut
-        ? "The SettleX server took too long to respond. Please try signing in again."
-        : "Cannot reach the SettleX server to sign in. Please check your connection.",
+        ? "The Belay server took too long to respond. Please try signing in again."
+        : "Cannot reach the Belay server to sign in. Please check your connection.",
     );
   }
 
@@ -316,7 +316,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     ]);
     if (read === "timeout") {
       throw new WalletSessionError(
-        "The SettleX server took too long to respond. Please try signing in again.",
+        "The Belay server took too long to respond. Please try signing in again.",
       );
     }
     payload = read.value;

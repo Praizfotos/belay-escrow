@@ -6,29 +6,33 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9FF66] disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50 active:opacity-90",
   {
     variants: {
       variant: {
+        // Primary action = ink. The lime accent is reserved for indicators,
+        // success states and the rare hero CTA.
         primary:
-          "bg-[#B9FF66] text-[#0F0F14] hover:bg-[#9AE040] hover:shadow-[0_4px_24px_-4px_rgba(185,255,102,0.45)] hover:-translate-y-0.5",
+          "bg-ink text-white hover:bg-ink-soft",
         secondary:
-          "bg-white text-[#0F0F14] border border-[#E5E5E5] hover:border-[#B9FF66] hover:shadow-[0_4px_20px_-6px_rgba(0,0,0,0.12)] hover:-translate-y-0.5",
-        dark: "bg-[#0F0F14] text-white hover:bg-[#1A1A22] hover:-translate-y-0.5 hover:shadow-[0_4px_24px_-4px_rgba(0,0,0,0.4)]",
-        ghost: "text-[#0F0F14] hover:bg-black/5",
+          "bg-surface text-ink border border-line hover:border-muted-faint",
+        accent:
+          "bg-accent text-ink hover:brightness-95",
+        dark: "bg-ink text-white hover:bg-ink-soft",
+        ghost: "text-ink hover:bg-ink/5",
         "ghost-white": "text-white hover:bg-white/10",
         outline:
-          "border border-[#0F0F14] text-[#0F0F14] hover:bg-[#0F0F14] hover:text-white",
+          "border border-ink text-ink hover:bg-ink hover:text-white",
         "outline-lime":
-          "border border-[#B9FF66] text-[#B9FF66] hover:bg-[#B9FF66] hover:text-[#0F0F14]",
-        destructive: "bg-red-500 text-white hover:bg-red-600",
+          "border border-accent text-accent hover:bg-accent hover:text-ink",
+        destructive: "bg-danger text-white hover:brightness-90",
       },
       size: {
-        sm: "px-4 py-2 text-sm rounded-xl",
-        md: "px-6 py-3 text-sm rounded-2xl",
-        lg: "px-8 py-4 text-base rounded-2xl",
-        xl: "px-10 py-5 text-lg rounded-2xl",
-        icon: "h-10 w-10 rounded-xl",
+        sm: "px-3 py-1.5 text-sm rounded-sm",
+        md: "px-4 py-2.5 text-sm",
+        lg: "px-6 py-3 text-sm",
+        xl: "px-8 py-4 text-base",
+        icon: "h-9 w-9 rounded-md",
       },
     },
     defaultVariants: {

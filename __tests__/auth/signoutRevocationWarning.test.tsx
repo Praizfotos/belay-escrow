@@ -46,7 +46,7 @@ function seedLocalSession() {
   const token = `header.${payload}.sig`;
   try {
     localStorage.setItem(
-      "settlex:session",
+      "belay:session",
       JSON.stringify({ walletAddress: "GWALLET", accessToken: token, expiresAt: 9999999999000 }),
     );
   } catch {
@@ -96,7 +96,7 @@ describe("Issue #125: sign-out revocation warning — clearWalletSession()", () 
     seedLocalSession();
     mockFetchWithStatus(503);
     await sessionModule.clearWalletSession();
-    expect(localStorage.getItem("settlex:session")).toBeNull();
+    expect(localStorage.getItem("belay:session")).toBeNull();
   });
 
   it("returns { serverRevoked: true } when no session exists (nothing to revoke)", async () => {

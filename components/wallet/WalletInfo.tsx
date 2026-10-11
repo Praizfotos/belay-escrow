@@ -28,7 +28,7 @@ export function WalletInfo({ className }: { className?: string }) {
   if (!isConnected || !publicKey) return null;
 
   const explorerUrl = `${STELLAR_EXPLORER}/account/${publicKey}`;
-  const isMainnet   = network === "PUBLIC";
+  const isMainnet = network === "PUBLIC";
   const isUnverified = network === null;
 
   const handleCopy = () => {
@@ -39,31 +39,26 @@ export function WalletInfo({ className }: { className?: string }) {
   };
 
   return (
-    <div
-      className={cn(
-        "bg-white border border-[#E5E5E5] rounded-2xl overflow-hidden",
-        className
-      )}
-    >
+    <div className={cn("card overflow-hidden", className)}>
       {/* Network bar */}
       <div
         className={cn(
-          "flex items-center gap-2 px-4 py-2 border-b border-[#E5E5E5] text-xs font-semibold",
+          "flex items-center gap-2 border-b border-line px-4 py-2 text-xs font-semibold",
           isUnverified
-            ? "bg-[#FEF2F2] text-[#991B1B]"
+            ? "bg-danger-soft text-danger"
             : isMainnet
-              ? "bg-blue-50 text-blue-600"
-              : "bg-[#B9FF66]/10 text-[#2D6600]"
+              ? "bg-paper text-ink"
+              : "bg-accent-soft text-accent-ink",
         )}
       >
         <span
           className={cn(
-            "w-1.5 h-1.5 rounded-full",
+            "h-1.5 w-1.5 rounded-full",
             isUnverified
-              ? "bg-[#DC2626]"
+              ? "bg-danger"
               : isMainnet
-                ? "bg-blue-600"
-                : "bg-[#2D6600] animate-pulse"
+                ? "bg-ink"
+                : "animate-pulse bg-accent-ink",
           )}
         />
         {isUnverified
@@ -76,35 +71,28 @@ export function WalletInfo({ className }: { className?: string }) {
       <div className="p-4 sm:p-5">
         {/* Address */}
         <div className="mb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AAA] mb-1">
-            Wallet Address
-          </p>
-          <div className="flex items-start sm:items-center gap-2">
-            <p className="text-sm font-mono font-semibold text-[#0F0F14] flex-1 truncate">
-              {publicKey}
-            </p>
-          </div>
-          <p className="text-xs text-[#888] font-mono mt-0.5">
-            {formatAddress(publicKey, 10)}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
+          <p className="t-eyebrow mb-1">Wallet address</p>
+          <p className="break-all font-mono text-sm font-semibold text-ink">{publicKey}</p>
+          <p className="mt-0.5 font-mono text-xs text-muted">{formatAddress(publicKey, 10)}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={handleCopy}
-              className="inline-flex items-center gap-1.5 px-1 py-1 text-xs font-medium text-[#555] hover:text-[#0F0F14] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-sm px-1 py-1 text-xs font-medium text-muted transition-colors hover:text-ink"
             >
               {copied ? (
-                <Check size={12} className="text-[#2D6600]" />
+                <Check size={12} className="text-accent-ink" />
               ) : (
                 <Copy size={12} />
               )}
               {copied ? "Copied!" : "Copy address"}
             </button>
-            <span className="text-[#D0D0D0]">·</span>
+            <span className="text-line">·</span>
             <a
               href={explorerUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-1 py-1 text-xs font-medium text-[#555] hover:text-[#0F0F14] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-sm px-1 py-1 text-xs font-medium text-muted transition-colors hover:text-ink"
             >
               <ExternalLink size={12} />
               View on Explorer
@@ -113,39 +101,37 @@ export function WalletInfo({ className }: { className?: string }) {
         </div>
 
         {/* Balance */}
-        <div className="p-3 bg-[#F6F6F6] rounded-xl mb-3">
+        <div className="mb-3 rounded-lg border border-line bg-paper p-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AAA] mb-1">
-                XLM Balance
-              </p>
+              <p className="t-eyebrow mb-1">XLM balance</p>
               {isLoadingBalance ? (
-                <Spinner size={16} className="text-[#B9FF66]" />
+                <Spinner size={16} className="text-muted" />
               ) : (
-                <p className="text-2xl font-black text-[#0F0F14]">
+                <p className="text-2xl font-bold tracking-tight text-ink">
                   {balance ? `${formatXLM(balance)}` : "—"}{" "}
-                  <span className="text-sm font-semibold text-[#B9FF66]">XLM</span>
+                  <span className="text-sm font-semibold text-muted">XLM</span>
                 </p>
               )}
             </div>
             <button
+              type="button"
               onClick={refreshBalance}
               disabled={isLoadingBalance}
               title="Refresh balance"
-              className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-[#E5E5E5] transition-colors disabled:opacity-40"
+              aria-label="Refresh XLM balance"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-40"
             >
-              <RefreshCw
-                size={14}
-                className={cn("text-[#888]", isLoadingBalance && "animate-spin")}
-              />
+              <RefreshCw size={14} className={cn(isLoadingBalance && "animate-spin")} />
             </button>
           </div>
         </div>
 
         {/* Disconnect */}
         <button
+          type="button"
           onClick={disconnect}
-          className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-red-500 rounded-xl border border-red-100 hover:bg-red-50 transition-colors"
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-danger/25 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-soft"
         >
           <LogOut size={14} />
           Disconnect Wallet

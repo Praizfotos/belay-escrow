@@ -73,7 +73,7 @@ describe("redact", () => {
       code: "42501",
       message: "permission denied",
       details: "Failing row contains (GABC, 1000.00)",
-      hint: "check the policy on expenses",
+      hint: "check the policy on agreements",
     }) as Record<string, unknown>;
 
     expect(out.details).toBe(REDACTED);

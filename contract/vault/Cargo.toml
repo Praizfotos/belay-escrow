@@ -1,0 +1,15 @@
+[package]
+name    = "belay-vault"
+version = "0.1.0"
+edition = "2021"
+description = "Belay escrow vault — custodies SEP-41 tokens for milestones"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }

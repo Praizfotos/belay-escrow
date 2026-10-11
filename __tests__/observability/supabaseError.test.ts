@@ -19,7 +19,7 @@ describe("classifySupabaseError", () => {
   it("recognises an RLS denial by message text", () => {
     expect(
       classifySupabaseError({
-        message: 'new row violates row-level security policy for table "expenses"',
+        message: 'new row violates row-level security policy for table "agreements"',
       }),
     ).toBe("rls_denied");
   });

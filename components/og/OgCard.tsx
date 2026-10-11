@@ -32,7 +32,7 @@ export function OgCard() {
           />
         </svg>
         <div style={{ display: "flex", fontSize: "40px", fontWeight: 800, color: "#FFFFFF" }}>
-          SettleX
+          Belay
         </div>
       </div>
 
@@ -48,7 +48,7 @@ export function OgCard() {
             letterSpacing: "-2px",
           }}
         >
-          Split bills. Settle on-chain
+          Escrow milestones.
         </div>
         <div
           style={{
@@ -60,7 +60,7 @@ export function OgCard() {
             letterSpacing: "-2px",
           }}
         >
-          in seconds.
+          Trustless payouts.
         </div>
       </div>
 
@@ -68,7 +68,7 @@ export function OgCard() {
       <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
         <div style={{ display: "flex", width: "48px", height: "6px", backgroundColor: "#B9FF66", borderRadius: "3px" }} />
         <div style={{ display: "flex", fontSize: "30px", color: "#B8B8C0" }}>
-          USDC or XLM · non-custodial · verifiable receipts
+          Tokens escrowed · approved on-chain · verifiable
         </div>
       </div>
     </div>

@@ -4,16 +4,14 @@
  * Regression tests for "the offline cache is global, not per wallet, and is
  * never cleared on disconnect".
  *
- * The leak was: wallet A's expenses and trips were cached under single global
- * keys, survived disconnect, and were then rendered to wallet B during the
- * window before B signed — or forever, if B never signed.
+ * The leak was: wallet A's agreements were cached under a single global key,
+ * survived disconnect, and were then rendered to wallet B during the window
+ * before B signed — or forever, if B never signed.
  */
 import React from "react";
-import { ExpenseProvider, useExpenseContext } from "@/context/ExpenseContext";
-import { TripProvider, useTripContext } from "@/context/TripContext";
+import { AgreementProvider, useAgreements } from "@/context/AgreementContext";
 import {
-  LS_EXPENSES,
-  LS_TRIPS,
+  LS_AGREEMENTS,
   LS_USER,
   clearAppCaches,
   getWalletScopedKey,
@@ -31,9 +29,18 @@ jest.mock("@/lib/supabase/session", () => ({
   onSessionChange: jest.fn(() => () => {}),
 }));
 
+// The contract client is only exercised by the write actions, which these
+// cache-isolation tests never call.
+jest.mock("@/lib/stellar/contract", () => ({
+  createAgreementOnChain: jest.fn(),
+  addMilestoneOnChain: jest.fn(),
+  fundAgreementOnChain: jest.fn(),
+  cancelAgreementOnChain: jest.fn(),
+}));
+
 let mockPublicKey: string | null = null;
 jest.mock("@/context/WalletContext", () => ({
-  useWalletContext: () => ({ publicKey: mockPublicKey }),
+  useWalletContext: () => ({ publicKey: mockPublicKey, reconcile: async () => {} }),
 }));
 
 const { getAuthenticatedClient, readStoredSession } = require("@/lib/supabase/session");
@@ -43,31 +50,29 @@ const { getAuthenticatedClient, readStoredSession } = require("@/lib/supabase/se
 const WALLET_A = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUAAY";
 const WALLET_B = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 
-const SECRET_EXPENSE = {
-  id: "exp-1",
-  title: "Wallet A private dinner",
-  amount: 420,
-  paidBy: WALLET_A,
-  shares: [],
-  createdAt: "2026-01-01T00:00:00Z",
+const SECRET_AGREEMENT = {
+  id: "agr-1",
+  client: WALLET_A,
+  freelancer: WALLET_B,
+  title: "Wallet A private build",
+  status: "draft",
+  totalStroops: 10_000_000n,
+  escrowedStroops: 0n,
+  releasedStroops: 0n,
+  refundedStroops: 0n,
+  milestoneCount: 1,
+  createdAt: 1_700_000_000_000,
+  fundedAt: 0,
+  closedAt: 0,
 };
 
-const SECRET_TRIP = {
-  id: "trip-1",
-  name: "Wallet A private trip",
-  members: [],
-  expenseIds: [],
-  createdAt: "2026-01-01T00:00:00Z",
-};
-
-function ExpenseProbe() {
-  const { expenses } = useExpenseContext();
-  return <div data-testid="expenses">{expenses.map((e) => e.title).join("|")}</div>;
+function serialize(list: unknown[]): string {
+  return JSON.stringify(list, (_k, v) => (typeof v === "bigint" ? { $bigint: v.toString() } : v));
 }
 
-function TripProbe() {
-  const { trips } = useTripContext();
-  return <div data-testid="trips">{trips.map((t) => t.name).join("|")}</div>;
+function AgreementProbe() {
+  const { agreements } = useAgreements();
+  return <div data-testid="agreements">{agreements.map((e) => e.title).join("|")}</div>;
 }
 
 beforeEach(() => {
@@ -82,89 +87,69 @@ beforeEach(() => {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe("offline cache isolation", () => {
-  it("does not show wallet A's cached expenses to wallet B", async () => {
+describe("offline agreement cache isolation", () => {
+  it("does not show wallet A's cached agreements to wallet B", async () => {
     localStorage.setItem(
-      getWalletScopedKey(LS_EXPENSES, WALLET_A),
-      JSON.stringify([SECRET_EXPENSE])
+      getWalletScopedKey(LS_AGREEMENTS, WALLET_A),
+      serialize([SECRET_AGREEMENT]),
     );
 
     mockPublicKey = WALLET_B;
     render(
-      <ExpenseProvider>
-        <ExpenseProbe />
-      </ExpenseProvider>
+      <AgreementProvider>
+        <AgreementProbe />
+      </AgreementProvider>,
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("expenses").textContent).toBe("");
+      expect(screen.getByTestId("agreements").textContent).toBe("");
     });
-    expect(screen.getByTestId("expenses").textContent).not.toContain("Wallet A");
-  });
-
-  it("does not show wallet A's cached trips to wallet B", async () => {
-    localStorage.setItem(
-      getWalletScopedKey(LS_TRIPS, WALLET_A),
-      JSON.stringify([SECRET_TRIP])
-    );
-
-    mockPublicKey = WALLET_B;
-    render(
-      <TripProvider>
-        <TripProbe />
-      </TripProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("trips").textContent).toBe("");
-    });
+    expect(screen.getByTestId("agreements").textContent).not.toContain("Wallet A");
   });
 
   it("withholds a wallet's own cache until it has proven ownership", async () => {
     localStorage.setItem(
-      getWalletScopedKey(LS_EXPENSES, WALLET_A),
-      JSON.stringify([SECRET_EXPENSE])
+      getWalletScopedKey(LS_AGREEMENTS, WALLET_A),
+      serialize([SECRET_AGREEMENT]),
     );
 
     mockPublicKey = WALLET_A;
     render(
-      <ExpenseProvider>
-        <ExpenseProbe />
-      </ExpenseProvider>
+      <AgreementProvider>
+        <AgreementProbe />
+      </AgreementProvider>,
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("expenses").textContent).toBe("");
+      expect(screen.getByTestId("agreements").textContent).toBe("");
     });
   });
 
   it("serves a wallet its own cache once it holds a verified session", async () => {
     localStorage.setItem(
-      getWalletScopedKey(LS_EXPENSES, WALLET_A),
-      JSON.stringify([SECRET_EXPENSE])
+      getWalletScopedKey(LS_AGREEMENTS, WALLET_A),
+      serialize([SECRET_AGREEMENT]),
     );
     readStoredSession.mockImplementation((wallet: string) =>
       wallet === WALLET_A
         ? { walletAddress: WALLET_A, accessToken: "t", expiresAt: Date.now() + 60_000 }
-        : null
+        : null,
     );
 
     mockPublicKey = WALLET_A;
     render(
-      <ExpenseProvider>
-        <ExpenseProbe />
-      </ExpenseProvider>
+      <AgreementProvider>
+        <AgreementProbe />
+      </AgreementProvider>,
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("expenses").textContent).toBe(
-        "Wallet A private dinner"
-      );
+      expect(screen.getByTestId("agreements").textContent).toBe("Wallet A private build");
     });
   });
 
   it("ignores a legacy unscoped cache entirely", async () => {
-    localStorage.setItem(LS_EXPENSES, JSON.stringify([SECRET_EXPENSE]));
+    localStorage.setItem(LS_AGREEMENTS, serialize([SECRET_AGREEMENT]));
     readStoredSession.mockReturnValue({
       walletAddress: WALLET_B,
       accessToken: "t",
@@ -173,36 +158,32 @@ describe("offline cache isolation", () => {
 
     mockPublicKey = WALLET_B;
     render(
-      <ExpenseProvider>
-        <ExpenseProbe />
-      </ExpenseProvider>
+      <AgreementProvider>
+        <AgreementProbe />
+      </AgreementProvider>,
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("expenses").textContent).toBe("");
+      expect(screen.getByTestId("agreements").textContent).toBe("");
     });
   });
 });
 
 describe("clearAppCaches", () => {
   it("purges every wallet-scoped and legacy cache key", () => {
-    localStorage.setItem(LS_EXPENSES, "[]");
-    localStorage.setItem(LS_TRIPS, "[]");
+    localStorage.setItem(LS_AGREEMENTS, "[]");
     localStorage.setItem(LS_USER, "{}");
-    localStorage.setItem(getWalletScopedKey(LS_EXPENSES, WALLET_A), "[]");
-    localStorage.setItem(getWalletScopedKey(LS_TRIPS, WALLET_A), "[]");
+    localStorage.setItem(getWalletScopedKey(LS_AGREEMENTS, WALLET_A), "[]");
     localStorage.setItem(getWalletScopedKey(LS_USER, WALLET_A), "{}");
-    localStorage.setItem(getWalletScopedKey(LS_EXPENSES, WALLET_B), "[]");
+    localStorage.setItem(getWalletScopedKey(LS_AGREEMENTS, WALLET_B), "[]");
 
     clearAppCaches(WALLET_A);
 
-    expect(localStorage.getItem(LS_EXPENSES)).toBeNull();
-    expect(localStorage.getItem(LS_TRIPS)).toBeNull();
+    expect(localStorage.getItem(LS_AGREEMENTS)).toBeNull();
     expect(localStorage.getItem(LS_USER)).toBeNull();
-    expect(localStorage.getItem(getWalletScopedKey(LS_EXPENSES, WALLET_A))).toBeNull();
-    expect(localStorage.getItem(getWalletScopedKey(LS_TRIPS, WALLET_A))).toBeNull();
+    expect(localStorage.getItem(getWalletScopedKey(LS_AGREEMENTS, WALLET_A))).toBeNull();
     expect(localStorage.getItem(getWalletScopedKey(LS_USER, WALLET_A))).toBeNull();
     // Another wallet's cache is a leak vector too — disconnect clears it all.
-    expect(localStorage.getItem(getWalletScopedKey(LS_EXPENSES, WALLET_B))).toBeNull();
+    expect(localStorage.getItem(getWalletScopedKey(LS_AGREEMENTS, WALLET_B))).toBeNull();
   });
 });

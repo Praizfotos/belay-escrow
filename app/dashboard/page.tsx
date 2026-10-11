@@ -4,111 +4,96 @@ import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Zap,
-  ArrowLeft,
-  Shield,
-  Clock,
-  Layers,
-  ArrowRight,
-  ReceiptText,
-  QrCode,
   Plus,
-  Map,
+  Inbox,
+  Coins,
   TrendingUp,
-  CheckCircle2,
-  AlertCircle,
+  FileSignature,
+  ArrowRight,
+  Wallet,
+  Briefcase,
 } from "lucide-react";
 import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/context/AuthContext";
-import { useExpense } from "@/hooks/useExpense";
-import { useTrip } from "@/hooks/useTrip";
+import { useAgreements } from "@/context/AgreementContext";
+import { useEscrow } from "@/hooks/useEscrow";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 import { WalletInfo } from "@/components/wallet/WalletInfo";
 import { Spinner } from "@/components/ui/Spinner";
-import { formatAddress, formatXLM } from "@/lib/utils";
-import { xlmToStroops, stroopsToXlm } from "@/lib/split/calculator";
-import type { Expense } from "@/types/expense";
-import { PendingInvitations } from "@/components/dashboard/PendingInvitations";
+import { Button } from "@/components/ui/Button";
+import { AppHeader } from "@/components/layout/AppHeader";
+import { AgreementCard } from "@/components/agreements/AgreementCard";
+import { PendingActions } from "@/components/dashboard/PendingActions";
+import { formatStroops } from "@/lib/escrow/planner";
+import { formatAddress, cn } from "@/lib/utils";
+import type { Agreement, AgreementStatus } from "@/types/agreement";
 
 // ─── Not-connected view ───────────────────────────────────────────────────────
 
 function ConnectPrompt() {
   return (
-    <div className="min-h-screen bg-[#F6F6F6] flex flex-col">
-      {/* Minimal header */}
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5E5] bg-white">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-[#B9FF66] flex items-center justify-center">
-            <Zap size={15} className="text-[#0F0F14] fill-[#0F0F14]" />
-          </div>
-          <span className="text-lg font-black tracking-tight text-[#0F0F14]">
-            Settle<span className="text-[#B9FF66]">X</span>
-          </span>
-        </Link>
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 text-sm font-medium text-[#555] hover:text-[#0F0F14] transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Back to Home
-        </Link>
-      </nav>
+    <div className="min-h-screen bg-paper">
+      <header className="border-b border-line bg-surface">
+        <div className="container-page flex h-14 items-center justify-between">
+          <Link href="/" className="text-sm font-semibold text-muted hover:text-ink transition-colors">
+            ← Belay
+          </Link>
+          <Link
+            href="/"
+            className="text-sm font-medium text-muted hover:text-ink transition-colors"
+          >
+            Back to home
+          </Link>
+        </div>
+      </header>
 
-      {/* Connect card */}
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
+      <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-12">
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-md"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="card w-full max-w-md p-8"
         >
-          <div className="bg-white rounded-3xl border border-[#E5E5E5] shadow-[0_4px_40px_-8px_rgba(0,0,0,0.08)] overflow-hidden">
-            <div className="h-1 w-full bg-gradient-to-r from-transparent via-[#B9FF66] to-transparent" />
-            <div className="p-8">
-              <div className="w-14 h-14 rounded-2xl bg-[#B9FF66] flex items-center justify-center mb-6 shadow-[0_4px_20px_-4px_rgba(185,255,102,0.5)]">
-                <Zap size={24} className="text-[#0F0F14] fill-[#0F0F14]" />
-              </div>
-              <h1 className="text-2xl font-black text-[#0F0F14] mb-2">
-                Connect your wallet
-              </h1>
-              <p className="text-[#666] text-sm leading-relaxed mb-8">
-                SettleX uses the{" "}
-                <a href="https://freighter.app" target="_blank" rel="noopener noreferrer"
-                  className="font-semibold text-[#0F0F14] underline underline-offset-2">
-                  Freighter
-                </a>{" "}
-                browser wallet to sign Stellar transactions. No account or password needed — just your keys.
-              </p>
-              <ConnectWalletButton className="w-full justify-center py-3 text-base rounded-2xl" />
-              <div className="grid grid-cols-3 gap-3 mt-6 pt-6 border-t border-[#E5E5E5]">
-                {[
-                  { icon: Shield, label: "Non-custodial" },
-                  { icon: Clock,  label: "<5s finality"  },
-                  { icon: Layers, label: "On-chain receipts" },
-                ].map(({ icon: I, label }) => (
-                  <div key={label} className="text-center">
-                    <I size={14} className="text-[#B9FF66] mx-auto mb-1" />
-                    <p className="text-[10px] font-medium text-[#888]">{label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-md bg-paper">
+            <Wallet size={18} className="text-accent-ink" />
           </div>
-          <p className="text-center text-xs text-[#AAA] mt-4">
-            Don&apos;t have Freighter?{" "}
-            <a href="https://freighter.app" target="_blank" rel="noopener noreferrer"
-              className="font-semibold text-[#555] hover:text-[#0F0F14] underline">
-              Install it free →
-            </a>
+          <h1 className="t-h2 text-ink">Connect your wallet</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Belay uses the{" "}
+            <a
+              href="https://freighter.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-ink underline underline-offset-2"
+            >
+              Freighter
+            </a>{" "}
+            browser wallet to sign Stellar escrow transactions. No account or
+            password needed — your keys stay in your wallet.
           </p>
+          <div className="mt-6">
+            <ConnectWalletButton className="w-full" />
+          </div>
+          <div className="mt-6 grid grid-cols-3 gap-3 border-t border-line pt-5 text-center">
+            {[
+              ["Non-custodial", "keys stay local"],
+              ["On-chain escrow", "Soroban contract"],
+              ["Testnet", "free to try"],
+            ].map(([label, sub]) => (
+              <div key={label}>
+                <p className="text-xs font-semibold text-ink">{label}</p>
+                <p className="mt-0.5 text-2xs text-muted-faint">{sub}</p>
+              </div>
+            ))}
+          </div>
         </motion.div>
       </div>
     </div>
   );
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
+// ─── Small building blocks ────────────────────────────────────────────────────
 
 function StatCard({
   label,
@@ -124,245 +109,262 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-4 ${accent ? "bg-[#0F0F14] border-transparent" : "bg-white border-[#E5E5E5]"}`}>
-      <Icon size={14} className={accent ? "text-[#B9FF66] mb-2" : "text-[#AAA] mb-2"} />
-      <p className={`text-xl font-black ${accent ? "text-[#B9FF66]" : "text-[#0F0F14]"}`}>{value}</p>
-      <p className={`text-xs font-semibold mt-0.5 ${accent ? "text-[#666]" : "text-[#888]"}`}>{label}</p>
-      {sub && <p className={`text-[10px] mt-0.5 ${accent ? "text-[#555]" : "text-[#AAA]"}`}>{sub}</p>}
+    <div
+      className={cn(
+        "rounded-lg border p-4",
+        accent ? "border-transparent bg-ink" : "border-line bg-surface"
+      )}
+    >
+      <Icon size={14} className={accent ? "mb-2 text-accent" : "mb-2 text-muted-faint"} />
+      <p className={cn("text-xl font-semibold tracking-tight", accent ? "text-white" : "text-ink")}>
+        {value}
+      </p>
+      <p className={cn("mt-0.5 text-xs font-medium", accent ? "text-white/55" : "text-muted")}>
+        {label}
+      </p>
+      {sub && (
+        <p className={cn("mt-0.5 text-2xs", accent ? "text-white/40" : "text-muted-faint")}>
+          {sub}
+        </p>
+      )}
     </div>
   );
 }
 
-// ─── Recent expense row ───────────────────────────────────────────────────────
+const STATUS_ORDER: AgreementStatus[] = ["funded", "draft", "completed", "cancelled"];
 
-function RecentExpenseRow({ expense }: { expense: Expense }) {
-  const paidCount = expense.shares.filter((s) => s.paid).length;
-  const allPaid = paidCount === expense.shares.length && expense.shares.length > 0;
-  const date = new Date(expense.createdAt).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+function RoleSection({
+  title,
+  icon: Icon,
+  agreements,
+  publicKey,
+}: {
+  title: string;
+  icon: React.ElementType;
+  agreements: Agreement[];
+  publicKey: string | null;
+}) {
+  if (agreements.length === 0) return null;
+
+  const byStatus = STATUS_ORDER.map((status) => ({
+    status,
+    items: agreements.filter((a) => a.status === status),
+  })).filter((g) => g.items.length > 0);
 
   return (
-    <Link
-      href="/expenses"
-      className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F6F6F6] transition-colors group"
-    >
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${allPaid ? "bg-[#B9FF66]/20" : "bg-[#0F0F14]"}`}>
-        <ReceiptText size={13} className={allPaid ? "text-[#2D6600]" : "text-[#B9FF66]"} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#0F0F14] truncate">{expense.title}</p>
-        <p className="text-[11px] text-[#AAA]">
-          {formatXLM(expense.totalAmount)} XLM · {expense.members.length} members · {date}
-        </p>
-      </div>
-      <div className="shrink-0 flex items-center gap-2">
-        {allPaid ? (
-          <CheckCircle2 size={14} className="text-[#2D6600]" />
-        ) : (
-          <span className="text-[11px] font-semibold text-[#888]">
-            {paidCount}/{expense.shares.length}
+    <section className="card overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+        <div className="flex items-center gap-2">
+          <Icon size={14} className="text-muted" />
+          <h2 className="text-sm font-semibold text-ink">{title}</h2>
+          <span className="rounded-full bg-paper px-2 py-0.5 text-2xs font-semibold text-muted">
+            {agreements.length}
           </span>
-        )}
-        <ArrowRight size={12} className="text-[#D0D0D0] group-hover:text-[#888] transition-colors" />
+        </div>
       </div>
-    </Link>
+      <div className="divide-y divide-line">
+        {byStatus.map((group) => (
+          <div key={group.status} className="px-5 py-3.5">
+            <p className="t-eyebrow mb-2.5">
+              {group.status === "funded"
+                ? "In progress"
+                : group.status === "draft"
+                  ? "Draft — not funded"
+                  : group.status === "completed"
+                    ? "Completed"
+                    : "Cancelled"}
+              {" · "}
+              {group.items.length}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {group.items.map((agreement) => (
+                <AgreementCard key={agreement.id} agreement={agreement} publicKey={publicKey} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
 // ─── Connected dashboard view ─────────────────────────────────────────────────
 
 function DashboardView() {
-  const { publicKey } = useWallet();
+  const { publicKey, network } = useWallet();
   const { user } = useAuth();
-  const { expenses } = useExpense();
-  const { trips } = useTrip();
+  const { agreements, isLoading } = useAgreements();
+  const { tokenBalance, isLoadingBalance, refreshBalance } = useEscrow();
 
-  const recentExpenses = expenses.slice(0, 5);
-  const totalStroops = expenses.reduce((s, e) => {
-    try {
-      return s + xlmToStroops(e.totalAmount || "0");
-    } catch {
-      return s;
-    }
-  }, 0n);
-  const pendingShares = expenses
-    .flatMap((e) => e.shares)
-    .filter((s) => !s.paid).length;
-  const settledExpenses = expenses.filter((e) => e.settled).length;
+  const asClient = agreements.filter((a) => a.client === publicKey);
+  const asFreelancer = agreements.filter((a) => a.freelancer === publicKey);
 
-  const appFeatures = [
-    { icon: ReceiptText, title: "Expenses",     desc: "Add bills & split them instantly.",                 href: "/expenses", badge: `${expenses.length}` },
-    { icon: Zap,         title: "Pay via XLM",  desc: "Sign payments with Freighter.",                    href: "/expenses", badge: "Live" },
-    { icon: QrCode,      title: "QR Payments",  desc: "SEP-0007 QR codes for any Stellar wallet.",        href: "/expenses", badge: "Live" },
-    { icon: Map,         title: "Trip Mode",    desc: "Group expenses & settle as a team.",               href: "/trips",    badge: `${trips.length}` },
-  ];
+  const totalEscrowed = agreements.reduce((s, a) => s + a.escrowedStroops, 0n);
+  const totalReleased = agreements.reduce((s, a) => s + a.releasedStroops, 0n);
+  const totalRefunded = agreements.reduce((s, a) => s + a.refundedStroops, 0n);
+  // Still locked = escrowed minus whatever has already left the vault.
+  const stillLocked =
+    totalEscrowed - totalReleased - totalRefunded > 0n
+      ? totalEscrowed - totalReleased - totalRefunded
+      : 0n;
+
+  const active = agreements.filter((a) => a.status === "draft" || a.status === "funded");
+  const completed = agreements.filter((a) => a.status === "completed");
+
+  const networkLabel =
+    network === "PUBLIC" ? "Stellar Mainnet" : network === "TESTNET" ? "Stellar Testnet" : "Network unknown";
+
+  const empty = agreements.length === 0;
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6]">
-      {/* Nav */}
-      <nav className="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-[#E5E5E5] bg-white/90 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-[#B9FF66] flex items-center justify-center">
-            <Zap size={15} className="text-[#0F0F14] fill-[#0F0F14]" />
-          </div>
-          <span className="text-lg font-black tracking-tight text-[#0F0F14]">
-            Settle<span className="text-[#B9FF66]">X</span>
-          </span>
-        </Link>
-        <div className="hidden sm:flex items-center gap-1">
-          <Link href="/expenses" className="px-3 py-1.5 text-sm font-medium text-[#555] hover:text-[#0F0F14] rounded-xl hover:bg-black/5 transition-all">
-            Expenses
-          </Link>
-          <Link href="/trips" className="px-3 py-1.5 text-sm font-medium text-[#555] hover:text-[#0F0F14] rounded-xl hover:bg-black/5 transition-all">
-            Trips
-          </Link>
-        </div>
-        <ConnectWalletButton />
-      </nav>
+    <div className="min-h-screen bg-paper">
+      <AppHeader />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-
-        {/* ── Welcome banner ── */}
+      <main className="container-page py-6 sm:py-8">
+        {/* Welcome row */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="bg-[#0F0F14] rounded-3xl p-5 sm:p-8 mb-6 relative overflow-hidden"
+          transition={{ duration: 0.35 }}
+          className="mb-6 flex flex-wrap items-end justify-between gap-4"
         >
-          <div className="absolute inset-0 rounded-3xl pointer-events-none"
-            style={{ background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(185,255,102,0.1), transparent)" }} />
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-1/2 pointer-events-none"
-            style={{ background: "linear-gradient(90deg, transparent, #B9FF66, transparent)" }} />
-          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#B9FF66]/10 border border-[#B9FF66]/20 rounded-full text-xs font-semibold text-[#B9FF66] mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#B9FF66] animate-pulse" />
-                Wallet Connected · Stellar Testnet
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white mb-1">
-                Welcome,{" "}
-                <span className="text-[#B9FF66]">
-                  {user?.displayName || (publicKey ? formatAddress(publicKey, 5) : "…")}
-                </span>
-              </h2>
-              <p className="text-[#666] text-sm">
-                Split expenses, pay with XLM, and track settlements on-chain.
-              </p>
-            </div>
+          <div>
+            <p className="t-eyebrow">{networkLabel}</p>
+            <h1 className="t-h1 mt-1 text-ink">
+              {user?.displayName ? `Welcome back, ${user.displayName}` : "Dashboard"}
+            </h1>
+            <p className="mt-1 font-mono text-xs text-muted-faint">
+              {publicKey ? formatAddress(publicKey, 10) : "—"}
+            </p>
           </div>
+          <Button variant="primary" asChild>
+            <Link href="/agreements/new">
+              <Plus size={15} /> New agreement
+            </Link>
+          </Button>
         </motion.div>
 
-        <PendingInvitations />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-6">
+            <PendingActions />
 
-        {/* ── Stats row ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <StatCard icon={ReceiptText}  label="Total Expenses"  value={expenses.length}          sub={`${settledExpenses} settled`} />
-          <StatCard icon={TrendingUp}   label="Total XLM Spent" value={formatXLM(stroopsToXlm(totalStroops))} sub="across all bills" accent />
-          <StatCard icon={AlertCircle}  label="Pending Shares"  value={pendingShares}             sub="awaiting payment" />
-          <StatCard icon={Map}          label="Trips"           value={trips.length}              sub={`${trips.filter(t => t.settled).length} settled`} />
-        </div>
-
-        {/* ── Main grid: wallet info + recent expenses ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-
-          {/* Wallet panel */}
-          <div className="lg:col-span-1">
-            <WalletInfo />
-          </div>
-
-          {/* Recent expenses */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-[#E5E5E5] overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#F5F5F5]">
-              <div className="flex items-center gap-2">
-                <ReceiptText size={14} className="text-[#B9FF66]" />
-                <p className="text-sm font-bold text-[#0F0F14]">Recent Expenses</p>
-              </div>
-              <Link
-                href="/expenses"
-                className="text-xs font-semibold text-[#555] hover:text-[#0F0F14] transition-colors"
-              >
-                View all →
-              </Link>
+            {/* Derived stats */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard
+                icon={FileSignature}
+                label="Agreements"
+                value={isLoading && empty ? "…" : agreements.length}
+                sub={`${active.length} active · ${completed.length} done`}
+              />
+              <StatCard
+                icon={Briefcase}
+                label="As client"
+                value={isLoading && empty ? "…" : asClient.length}
+                sub="you fund & approve"
+              />
+              <StatCard
+                icon={Coins}
+                label="Still in escrow"
+                value={stillLocked > 0n ? formatStroops(stillLocked) : "0"}
+                sub="tokens held by the contract"
+                accent
+              />
+              <StatCard
+                icon={TrendingUp}
+                label="Released"
+                value={totalReleased > 0n ? formatStroops(totalReleased) : "0"}
+                sub={`to freelancers · ${asFreelancer.length} as freelancer`}
+              />
             </div>
 
-            {recentExpenses.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-[#F0F0F0] flex items-center justify-center mb-3">
-                  <ReceiptText size={18} className="text-[#CCC]" />
+            {empty ? (
+              <div className="card-flat border-dashed p-10 text-center">
+                <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-md bg-paper">
+                  <Inbox size={18} className="text-muted-faint" />
                 </div>
-                <p className="text-sm font-semibold text-[#555] mb-1">No expenses yet</p>
-                <p className="text-xs text-[#AAA] mb-4">Create your first expense to get started</p>
-                <Link
-                  href="/expenses"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F0F14] text-[#B9FF66] text-xs font-bold hover:bg-[#1A1A22] transition-all"
-                >
-                  <Plus size={12} />
-                  New Expense
-                </Link>
+                <h2 className="t-h3 text-ink">No agreements yet</h2>
+                <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-muted">
+                  An agreement defines the milestones and the escrow. Create one
+                  as the client, or ask your counterparty to invite you as the
+                  freelancer.
+                </p>
+                <div className="mt-6 flex justify-center gap-2">
+                  <Button variant="primary" asChild>
+                    <Link href="/agreements/new">
+                      <Plus size={15} /> Create an agreement
+                    </Link>
+                  </Button>
+                </div>
               </div>
             ) : (
-              <div className="p-2">
-                {recentExpenses.map((expense) => (
-                  <RecentExpenseRow key={expense.id} expense={expense} />
-                ))}
-                {expenses.length > 5 && (
-                  <Link
-                    href="/expenses"
-                    className="flex items-center justify-center gap-1.5 py-2.5 mt-1 rounded-xl text-xs font-semibold text-[#888] hover:text-[#0F0F14] hover:bg-[#F6F6F6] transition-colors"
-                  >
-                    +{expenses.length - 5} more expenses
-                    <ArrowRight size={11} />
-                  </Link>
+              <>
+                <RoleSection
+                  title="As client"
+                  icon={Briefcase}
+                  agreements={asClient}
+                  publicKey={publicKey}
+                />
+                <RoleSection
+                  title="As freelancer"
+                  icon={FileSignature}
+                  agreements={asFreelancer}
+                  publicKey={publicKey}
+                />
+                {asClient.length === 0 && asFreelancer.length > 0 && (
+                  <p className="text-xs text-muted-faint">
+                    You are only listed as a freelancer on these agreements.
+                  </p>
                 )}
+              </>
+            )}
+
+            {!empty && (
+              <div className="flex justify-end">
+                <Link
+                  href="/agreements"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-ink transition-colors"
+                >
+                  View all agreements <ArrowRight size={14} />
+                </Link>
               </div>
             )}
           </div>
-        </div>
 
-        {/* ── App feature cards ── */}
-        <p className="text-xs font-semibold uppercase tracking-wider text-[#AAA] mb-3">Quick Access</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {appFeatures.map((f) => (
-            <Link
-              key={f.title}
-              href={f.href}
-              className="bg-white rounded-2xl border border-[#E5E5E5] p-4 hover:border-[#B9FF66]/50 hover:shadow-[0_4px_20px_-4px_rgba(185,255,102,0.15)] transition-all group"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-9 h-9 rounded-xl bg-[#B9FF66]/10 flex items-center justify-center">
-                  <f.icon size={15} className="text-[#2D6600]" />
+          {/* Right rail: wallet + escrow token balance */}
+          <div className="space-y-4">
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="t-eyebrow">Escrow token balance</p>
+                  {isLoadingBalance ? (
+                    <Spinner size={16} className="mt-2 text-muted" />
+                  ) : (
+                    <p className="mt-1 text-xl font-semibold tracking-tight text-ink">
+                      {tokenBalance ?? "—"}{" "}
+                      <span className="text-xs font-medium text-muted-faint">tokens</span>
+                    </p>
+                  )}
                 </div>
-                <span className="text-[10px] font-bold text-[#2D6600] bg-[#B9FF66]/20 px-2 py-0.5 rounded-full">
-                  {f.badge}
-                </span>
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-accent-soft">
+                  <Wallet size={15} className="text-accent-ink" />
+                </div>
               </div>
-              <p className="text-sm font-bold text-[#0F0F14] mb-0.5">{f.title}</p>
-              <p className="text-[11px] text-[#888] leading-relaxed">{f.desc}</p>
-              <div className="flex items-center gap-1 mt-3 text-[11px] font-semibold text-[#2D6600] group-hover:gap-2 transition-all">
-                Open <ArrowRight size={10} />
-              </div>
-            </Link>
-          ))}
-        </div>
+              <p className="mt-2 text-2xs leading-relaxed text-muted-faint">
+                The escrow-token balance of your connected wallet, read on-chain.
+                Fund agreements from this balance.
+              </p>
+              <button
+                type="button"
+                onClick={() => void refreshBalance()}
+                disabled={isLoadingBalance}
+                className="mt-3 text-xs font-medium text-muted hover:text-ink transition-colors disabled:opacity-50"
+              >
+                Refresh balance
+              </button>
+            </div>
 
-        {/* ── CTA row ── */}
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/expenses"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F0F14] text-[#B9FF66] text-sm font-bold hover:bg-[#1A1A22] transition-all"
-          >
-            <Plus size={14} />
-            New Expense
-          </Link>
-          <Link
-            href="/trips"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#E5E5E5] text-[#555] text-sm font-bold hover:bg-[#F0F0F0] transition-all"
-          >
-            <Map size={14} />
-            View Trips
-          </Link>
+            <WalletInfo />
+          </div>
         </div>
       </main>
     </div>
@@ -376,8 +378,8 @@ export default function DashboardPage() {
 
   if (isConnecting) {
     return (
-      <div className="min-h-screen bg-[#F6F6F6] flex items-center justify-center">
-        <Spinner size={32} className="text-[#B9FF66]" />
+      <div className="flex min-h-screen items-center justify-center bg-paper">
+        <Spinner size={28} className="text-muted" />
       </div>
     );
   }

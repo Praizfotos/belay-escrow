@@ -1,55 +1,74 @@
-# SettleX Release Checklist
+# Belay Release Checklist
 
-Date: 2026-03-29
+Date: 2026-10-11
 
 ## Pre-release Quality
 
-- [x] Install dependencies with `npm ci` / `npm install`
-- [x] Frontend lint passes: `npm run lint`
-- [x] Frontend tests pass: `npm test -- --runInBand`
-- [x] Production build passes: `npm run build`
-- [x] Contract tests pass: `cd contract && cargo test`
+- [ ] Install dependencies with `npm ci` / `npm install`
+- [ ] Frontend lint passes: `npm run lint`
+- [ ] Frontend tests pass: `npm test -- --runInBand`
+- [ ] Production build passes: `npm run build`
+- [ ] Contract tests pass: `cd contract && cargo test`
 
 ## Contract and Deployment
 
-- [x] Settlement contract deployed to testnet
-- [x] Pool contract deployed to testnet
-- [x] Inter-contract call proof transaction recorded on testnet
-- [x] `NEXT_PUBLIC_CONTRACT_ID` updated in `.env.local`
-- [x] Explorer links documented in README
+- [ ] Belay agreement contract deployed to testnet
+- [ ] Escrow vault contract deployed to testnet
+- [ ] Vault initialized with `init_vault(admin, controller=<Belay contract>, token)`
+- [ ] Agreement contract initialized with `init(admin, vault=<vault contract>)`
+- [ ] End-to-end fund → release proof transaction recorded on testnet
+- [ ] `NEXT_PUBLIC_CONTRACT_ID` set in `.env.local`
+- [ ] `NEXT_PUBLIC_VAULT_CONTRACT_ID` set in `.env.local`
+- [ ] `NEXT_PUBLIC_ESCROW_TOKEN_ID` set in `.env.local`
+- [ ] Agreement contract's stored vault address (`get_vault`) matches `NEXT_PUBLIC_VAULT_CONTRACT_ID`
+- [ ] Upgrade/admin authority documented (or handed to a timelock/multisig) — see [RUNBOOK.md](./RUNBOOK.md)
+- [ ] Explorer links documented in README
 
 ## CI/CD
 
-- [x] CI workflow defined in `.github/workflows/ci.yml`
-- [x] Production check workflow defined in `.github/workflows/production-check.yml`
-- [x] CI badge added to README
+- [ ] CI workflow defined in `.github/workflows/ci.yml`
+- [ ] Production check workflow defined in `.github/workflows/production-check.yml`
+- [ ] The three `NEXT_PUBLIC_*` contract values set as CI repository variables
+- [ ] CI badge added to README
 
 ## Documentation
 
-- [x] README includes live demo link
-- [x] README includes contract IDs and transaction proofs
-- [x] README includes pool address proof
-- [x] README includes deployment screenshot (`public/deployment.png`)
-- [x] README includes submission checklist evidence section
-- [x] Final docs package added under `docs/`
+- [ ] README includes live demo link
+- [ ] README includes contract IDs and transaction proofs
+- [ ] README includes vault address proof
+- [ ] README includes deployment screenshot (`public/deployment.png`)
+- [ ] README includes submission checklist evidence section
+- [ ] Final docs package added under `docs/`
 
 ## Auth Shared State (required before any multi-instance deploy)
 
 - [ ] `supabase-setup.sql` re-applied so `auth_nonces` and `auth_rate_limits`
-      exist (section 5.6)
+      exist
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` set as a server-only env var (never
       `NEXT_PUBLIC_`) in every deployment environment
+- [ ] `AUTH_CHALLENGE_SECRET` set in production and different from
+      `SUPABASE_JWT_SECRET`
 - [ ] Verified a signed challenge cannot be replayed: post the same
       `/api/auth/verify` body twice and confirm the second attempt is rejected
 - [ ] Confirmed `CHALLENGE_TTL_SECONDS` is 60 — it is the replay window whenever
       the shared store is unavailable
 
+## RLS / Trigger Breach Tests (required before production)
+
+- [ ] Confirmed RLS is enabled on `users`, `agreements`, and `milestones`
+- [ ] A test using only the anon key cannot read or modify another wallet's
+      agreement/milestone
+- [ ] Column-validation triggers for agreement/milestone updates are present
+      and reject identity/counterparty rewrites
+
 ## Submission Gate
 
-- [x] Public GitHub repository ready
-- [x] Commit history exceeds minimum requirement (44 commits)
+- [ ] Public GitHub repository ready
+- [ ] Commit history exceeds minimum requirement
 - [ ] Add one explicit mobile viewport screenshot (phone-sized capture) and reference it in README before final submission
 
 Notes:
-- All automated checks are currently green locally.
-- One manual evidence item remains: a dedicated phone viewport screenshot.
+- Run the portal's end-to-end checklist against a testnet deployment, not just
+  local.
+- One manual evidence item is easy to forget: a dedicated phone viewport
+  screenshot.

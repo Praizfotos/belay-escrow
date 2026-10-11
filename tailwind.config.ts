@@ -10,22 +10,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand Colors
-        lime: {
-          accent: "#B9FF66",
-          dark: "#9AE040",
-          light: "#D4FFB0",
+        // Semantic tokens (see app/globals.css). One accent — lime — plus neutrals.
+        ink: {
+          DEFAULT: "hsl(var(--ink) / <alpha-value>)",
+          soft: "hsl(var(--ink-soft) / <alpha-value>)",
+          inverse: "hsl(var(--ink-inverse) / <alpha-value>)",
         },
-        dark: {
-          base: "#0F0F14",
-          card: "#1A1A22",
-          muted: "#2A2A35",
+        paper: "hsl(var(--paper) / <alpha-value>)",
+        surface: "hsl(var(--surface) / <alpha-value>)",
+        line: "hsl(var(--line) / <alpha-value>)",
+        muted: {
+          DEFAULT: "hsl(var(--muted-foreground) / <alpha-value>)",
+          faint: "hsl(var(--muted-faint) / <alpha-value>)",
         },
-        neutral: {
-          bg: "#F6F6F6",
-          card: "#FFFFFF",
-          border: "#E5E5E5",
-          muted: "#888888",
+        accent: {
+          DEFAULT: "hsl(var(--accent) / <alpha-value>)",
+          ink: "hsl(var(--accent-ink) / <alpha-value>)",
+          soft: "hsl(var(--accent-soft) / <alpha-value>)",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger) / <alpha-value>)",
+          soft: "hsl(var(--danger-soft) / <alpha-value>)",
+        },
+        warn: {
+          DEFAULT: "hsl(var(--warn) / <alpha-value>)",
+          soft: "hsl(var(--warn-soft) / <alpha-value>)",
         },
         // shadcn/ui compatible
         background: "hsl(var(--background))",
@@ -46,14 +55,6 @@ const config: Config = {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
         },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
@@ -66,52 +67,53 @@ const config: Config = {
         sans: ["var(--font-poppins)", "Inter", "system-ui", "sans-serif"],
         mono: ["var(--font-jetbrains-mono)", "JetBrains Mono", "monospace"],
       },
+      fontSize: {
+        // Deliberate type scale (line-heights tight for display, relaxed for body).
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+        xs: ["0.75rem", { lineHeight: "1.125rem" }],
+        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
+        base: ["0.9375rem", { lineHeight: "1.5rem" }],
+        lg: ["1.0625rem", { lineHeight: "1.625rem" }],
+        xl: ["1.25rem", { lineHeight: "1.75rem" }],
+        "2xl": ["1.5rem", { lineHeight: "2rem" }],
+        "3xl": ["1.875rem", { lineHeight: "2.25rem" }],
+        "4xl": ["2.25rem", { lineHeight: "2.5rem" }],
+        "5xl": ["3rem", { lineHeight: "1.08" }],
+        "6xl": ["3.75rem", { lineHeight: "1.04" }],
+      },
       borderRadius: {
-        "2xl": "1.25rem",
-        "3xl": "1.5rem",
-        "4xl": "2rem",
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "0.75rem",
+        md: "0.625rem",
+        sm: "0.5rem",
       },
       boxShadow: {
-        card: "0 2px 20px -4px rgba(0,0,0,0.08), 0 1px 4px -2px rgba(0,0,0,0.04)",
+        card: "0 1px 2px rgba(15,15,20,0.04), 0 10px 28px -18px rgba(15,15,20,0.18)",
         "card-hover":
-          "0 8px 40px -8px rgba(0,0,0,0.15), 0 4px 12px -4px rgba(0,0,0,0.08)",
-        "lime-glow": "0 4px 24px -4px rgba(185,255,102,0.35)",
-        "dark-card": "0 4px 24px -4px rgba(0,0,0,0.4)",
+          "0 1px 2px rgba(15,15,20,0.05), 0 14px 34px -18px rgba(15,15,20,0.24)",
+        pop: "0 24px 64px -24px rgba(15,15,20,0.28), 0 4px 16px -8px rgba(15,15,20,0.12)",
+        focus:
+          "0 0 0 2px hsl(var(--surface)), 0 0 0 4px hsl(var(--ink))",
+        "focus-inverse":
+          "0 0 0 2px hsl(var(--ink)), 0 0 0 4px hsl(var(--accent))",
       },
       animation: {
-        "fade-up": "fadeUp 0.6s ease-out forwards",
-        "fade-in": "fadeIn 0.5s ease-out forwards",
-        float: "float 3s ease-in-out infinite",
-        "pulse-lime": "pulseLime 2s ease-in-out infinite",
+        "fade-in": "fadeIn 0.35s ease-out forwards",
+        "fade-up": "fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) forwards",
+        "indeterminate": "indeterminate 1.4s ease-in-out infinite",
       },
       keyframes: {
-        fadeUp: {
-          "0%": { opacity: "0", transform: "translateY(24px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
         fadeIn: {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
         },
-        float: {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-8px)" },
+        fadeUp: {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        pulseLime: {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(185,255,102,0.4)" },
-          "50%": { boxShadow: "0 0 0 12px rgba(185,255,102,0)" },
+        indeterminate: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
         },
-      },
-      backgroundImage: {
-        "hero-grid":
-          "linear-gradient(rgba(185,255,102,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(185,255,102,0.04) 1px, transparent 1px)",
-        "radial-lime":
-          "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(185,255,102,0.15), transparent)",
-        "radial-dark":
-          "radial-gradient(ellipse 80% 60% at 50% 120%, rgba(185,255,102,0.08), transparent)",
       },
     },
   },

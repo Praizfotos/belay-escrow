@@ -27,9 +27,9 @@ cleanly. Alert on the event name, group by `fields`.
 ```ts
 import { logWarn, reportError, countMetric } from "@/lib/observability/logger";
 
-reportError("payment.failed", err, { fields: { expenseId } }); // error + reporter
-logWarn("contract.read_payments_failed", { fields: { tripId } }); // degraded, not broken
-countMetric("payment.partial_success", { stage: "record" });      // countable
+reportError("escrow.fund_failed", err, { fields: { agreementId } }); // error + reporter
+logWarn("contract.read_milestones_failed", { fields: { agreementId } }); // degraded, not broken
+countMetric("escrow.fund_success", { stage: "release" });                  // countable
 ```
 
 Use `reportError` in a `catch` block — it logs *and* forwards to the error
@@ -90,7 +90,7 @@ searchable and alertable. Once per process it emits
 `observability.no_error_provider` to say no tracker is attached.
 
 To send errors to Sentry or anything else, edit **one function** —
-`defaultReporter` in `lib/observability/init.ts`. All 30+ call sites go through
+`defaultReporter` in `lib/observability/init.ts`. All call sites go through
 `reportError`, so nothing else changes:
 
 ```ts
@@ -116,20 +116,19 @@ logs `observability.reporter_failed` instead.
 paths re-throw raw PostgREST errors it could print
 
 ```
-new row violates row-level security policy for table "expenses"
+new row violates row-level security policy for table "agreements"
 ```
 
 at a user — leaking the schema and the fact that RLS is the gate.
 
 It is an **allowlist**, not a blanket hide. Much of the app throws text written
-for people ("Lobstr extension is not installed.", "Pool balance is insufficient
-for this transfer."), and replacing those with "something went wrong" would make
-the product worse. A message is shown only when it reads like authored prose and
-trips none of the internal markers — Postgres/PostgREST wording, stack frames,
-JSON dumps, tokens, wallet addresses, protocol jargon such as `JWT`, framework
-errors. Anything else becomes a generic line. **The safe default is to hide**, so
-a newly added internal error is suppressed until someone deliberately makes it
-user-facing.
+for people ("Lobstr extension is not installed.", "Vault error #137."), and
+replacing those with "something went wrong" would make the product worse. A
+message is shown only when it reads like authored prose and trips none of the
+internal markers — Postgres/PostgREST wording, stack frames, JSON dumps, tokens,
+wallet addresses, protocol jargon such as `JWT`, framework errors. Anything else
+becomes a generic line. **The safe default is to hide**, so a newly added
+internal error is suppressed until someone deliberately makes it user-facing.
 
 ```ts
 import { userFacingMessage } from "@/lib/errors/userMessage";
@@ -142,10 +141,11 @@ Suppression changes only what is **displayed** — the full error always reaches
 happened, so a message that *should* have been user-facing can be spotted and
 reworded rather than silently swallowed.
 
-Use it at every surface that renders error text: both boundaries, the payment
-panel, settlement toasts, the wallet connect toast, and the trip page's degraded
-banner. `app/global-error.tsx` goes further and never shows a message at all — a
-crash that deep is always internal, so only the reference id is useful.
+Use it at every surface that renders error text: both boundaries, the funding
+panel, milestone action toasts, the wallet connect toast, and the agreement
+page's degraded banner. `app/global-error.tsx` goes further and never shows a
+message at all — a crash that deep is always internal, so only the reference id
+is useful.
 
 ## Where it is installed
 
@@ -155,9 +155,9 @@ crash that deep is always internal, so only the reference id is useful.
   provider tree in `app/layout.tsx`. It also catches `unhandledrejection` and
   window `error`, which React error boundaries never see — and most of this
   app's failure paths are async.
-- **Boundaries** — `app/error.tsx` and `app/global-error.tsx`. The latter is new:
-  `error.tsx` renders *inside* the root layout and so cannot catch a provider
-  crash, which previously produced a blank page with nothing logged.
+- **Boundaries** — `app/error.tsx` and `app/global-error.tsx`. The latter is
+  new: `error.tsx` renders *inside* the root layout and so cannot catch a
+  provider crash, which previously produced a blank page with nothing logged.
 
 ## Events worth alerting on
 
@@ -168,12 +168,13 @@ crash that deep is always internal, so only the reference id is useful.
 | `auth.verify_rejected` | A spike means signing is broken, or someone is probing. |
 | `auth.revocation_not_configured` | Sign-out cannot revoke; tokens stay live. |
 | `boot.config_invalid` | Production boot refused to start. |
-| `payment.onchain_record_failed` | **XLM moved but the contract has no record** — ledger and app disagree. |
-| `expense.mark_share_paid_failed` | Payment settled on-chain but the database does not show it. |
+| `escrow.fund_onchain_record_failed` | **Tokens entered the vault but the database has no funding record** — ledger and app disagree. |
+| `milestone.release_onchain_record_failed` | Tokens left the vault but the database still shows the milestone pending. |
+| `milestone.submit_onchain_record_failed` | Work was submitted on-chain but the app did not capture it. |
 | `*.rls_denied` (via `fields.kind`) | RLS rejected a write — auth or policy problem. |
 | `auth.session_handshake_failed` | A wallet could not establish a session; users are stuck on cached data. |
 | `auth.signup_failed` / `auth.signin_failed` | An unrecognised database failure blocked account creation or sign-in. |
-| `trip.realtime_failed` / `expense.realtime_failed` | Lists silently stop updating. |
+| `agreement.realtime_failed` / `milestone.realtime_failed` | Lists silently stop updating. |
 | `contract.fetch_events_failed` | Sustained = the Soroban RPC is down. |
 | `observability.no_error_provider` | This deployment has no error tracker wired up. |
 
@@ -185,9 +186,12 @@ crash that deep is always internal, so only the reference id is useful.
 Deliberately not an in-process counter: that would be per-instance and lost on
 every scale-down.
 
-The issue asked how often payments end in `partial_success`. That is
-`payment.partial_success` (with `fields.stage` distinguishing the first attempt
-from a retry), against `payment.success` as the denominator — a rate, not a raw
-count. Also emitted: `payment.failed`, `payment.rejected_in_wallet` (a user
-declining in their wallet is normal traffic, counted but not reported, so it
-cannot drown real failures), `auth.session_issued`, `auth.session_revoked`.
+The question worth answering is how often a value transfer ends in
+`partial_success` — the tokens moved on-chain but the follow-up database write
+failed. That is `escrow.fund_success` / `milestone.release_success` with
+`fields.stage` distinguishing the first attempt from a retry, against
+`escrow.fund_partial_success` / `milestone.release_partial_success` as the
+numerator and `…_success` as the denominator — a rate, not a raw count. Also
+emitted: `escrow.fund_failed`, `escrow.rejected_in_wallet` (a user declining in
+their wallet is normal traffic, counted but not reported, so it cannot drown
+real failures), `auth.session_issued`, `auth.session_revoked`.

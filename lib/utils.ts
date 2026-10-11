@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { xlmToStroops } from "./split/calculator";
+import { xlmToStroops } from "./escrow/planner";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -13,7 +13,7 @@ export function formatAddress(address: string, chars = 6): string {
 
 export function formatXLM(amount: string | number | bigint): string {
   try {
-    const stroops = xlmToStroops(amount);
+    const stroops = xlmToStroops(String(amount));
     const isNegative = stroops < 0n;
     const absStroops = isNegative ? -stroops : stroops;
     const whole = absStroops / 10_000_000n;

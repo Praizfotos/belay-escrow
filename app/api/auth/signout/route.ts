@@ -31,6 +31,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export async function POST(request: Request) {
+  const logger = requestLogger("POST /api/auth/signout", request);
   const limit = await enforceRateLimit(`signout:${clientKey(request)}`, 30, 60_000);
   if (!limit.allowed) {
     logger.warn("auth.signout_rate_limited", { retryAfter: limit.retryAfter });
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     return jsonWithCorrelation(
       logger,
       { error: "Too many requests. Please wait a moment." },
-      { status: 429, headers: { ...NO_STORE, "Retry-After": String(limit.retryAfter) } },
+      { status: 429, headers: { ...NO_STORE, "Retry-After": String(limit.retryAfter) } }
     );
   }
 

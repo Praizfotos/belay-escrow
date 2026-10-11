@@ -2,141 +2,93 @@
 
 import React from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Twitter, Github, ExternalLink, ArrowUpRight } from "lucide-react";
-import { SettleXLogo } from "@/components/ui/Logo";
+import { ExternalLink, ArrowUpRight } from "lucide-react";
+import { BelayLogo } from "@/components/ui/Logo";
 
 const footerLinks = {
   Product: [
-    { label: "Features", href: "#features" },
-    { label: "How It Works", href: "#how-it-works" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Changelog", href: "#" },
-    { label: "Roadmap", href: "#" },
+    { label: "How it works", href: "/#how-it-works" },
+    { label: "Promises", href: "/#promises" },
+    { label: "Disputes & transparency", href: "/#disputes" },
+    { label: "Dashboard", href: "/dashboard" },
+    { label: "New agreement", href: "/agreements/new" },
   ],
-  Developers: [
-    { label: "Documentation", href: "#" },
-    { label: "GitHub", href: "#", external: true },
-    { label: "Stellar SDK", href: "https://stellar.org/developers", external: true },
-    { label: "Horizon API", href: "https://horizon.stellar.org", external: true },
-    { label: "Freighter Wallet", href: "https://freighter.app", external: true },
-  ],
-  Company: [
-    { label: "About", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Contact", href: "#" },
-    { label: "Privacy Policy", href: "#" },
-    { label: "Terms of Service", href: "#" },
+  Resources: [
+    { label: "Freighter wallet", href: "https://freighter.app", external: true },
+    { label: "Stellar developers", href: "https://stellar.org/developers", external: true },
+    { label: "Stellar testnet explorer", href: "https://stellar.expert/explorer/testnet", external: true },
+    { label: "Soroban docs", href: "https://developers.stellar.org/docs/build/smart-contracts/overview", external: true },
   ],
 };
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0F0F14] text-white relative overflow-hidden">
-      {/* Subtle grid */}
-      <div className="absolute inset-0 bg-grid-dark opacity-50 pointer-events-none" />
-
-      {/* Lime radial glow */}
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[#B9FF66]/5 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
-        {/* Top section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 pb-12 border-b border-white/10">
-          {/* Brand column */}
-          <div className="lg:col-span-4">
-            <Link href="/" className="inline-flex mb-4" aria-label="SettleX home">
-              <SettleXLogo size="md" variant="dark" />
+    <footer className="on-dark border-t border-white/10 bg-ink text-white">
+      <div className="container-page py-14">
+        <div className="grid grid-cols-1 gap-10 pb-10 border-b border-white/10 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <Link href="/" className="inline-flex mb-4" aria-label="Belay home">
+              <BelayLogo size="md" variant="dark" />
             </Link>
-            <p className="text-[#888] text-sm leading-relaxed max-w-xs mb-6">
-              Decentralized bill-splitting on the Stellar blockchain. Split expenses, pay instantly, track transparently.
+            <p className="max-w-sm text-sm leading-relaxed text-white/55">
+              Milestone escrow for freelance work, settled on the Stellar
+              network. Fund milestones, approve deliverables, get paid on-chain.
             </p>
-
-            {/* Social links */}
-            <div className="flex items-center gap-3">
-              {[
-                { icon: Twitter, href: "#", label: "Twitter" },
-                { icon: Github, href: "#", label: "GitHub" },
-              ].map(({ icon: Icon, href, label }) => (
-                <a
-                  key={label}
-                  href={href}
-                  aria-label={label}
-                  className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-[#888] hover:text-white hover:border-[#B9FF66]/40 hover:bg-[#B9FF66]/10 transition-all duration-200"
-                >
-                  <Icon size={16} />
-                </a>
-              ))}
-              <a
-                href="https://stellar.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[#B9FF66]/10 border border-[#B9FF66]/20 text-[#B9FF66] text-xs font-medium hover:bg-[#B9FF66]/20 transition-all duration-200"
-              >
-                Built on Stellar
-                <ExternalLink size={12} />
-              </a>
-            </div>
+            <a
+              href="https://stellar.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+            >
+              Built on Stellar
+              <ExternalLink size={12} />
+            </a>
           </div>
 
-          {/* Links columns */}
-          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
+          <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-2 gap-8">
             {Object.entries(footerLinks).map(([category, links]) => (
               <div key={category}>
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-[#555] mb-4">
+                <h4 className="mb-4 text-2xs font-semibold uppercase tracking-[0.14em] text-white/40">
                   {category}
                 </h4>
                 <ul className="space-y-2.5">
-                  {links.map((link) => (
-                    <li key={link.label}>
-                      {"external" in link && link.external ? (
+                  {links.map((link) =>
+                    "external" in link && link.external ? (
+                      <li key={link.label}>
                         <a
                           href={link.href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-sm text-[#888] hover:text-white transition-colors duration-150 group"
+                          className="group inline-flex items-center gap-1 text-sm text-white/60 transition-colors hover:text-white"
                         >
                           {link.label}
-                          <ArrowUpRight
-                            size={11}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          />
+                          <ArrowUpRight size={11} className="opacity-0 transition-opacity group-hover:opacity-100" />
                         </a>
-                      ) : (
+                      </li>
+                    ) : (
+                      <li key={link.label}>
                         <Link
                           href={link.href}
-                          className="text-sm text-[#888] hover:text-white transition-colors duration-150"
+                          className="text-sm text-white/60 transition-colors hover:text-white"
                         >
                           {link.label}
                         </Link>
-                      )}
-                    </li>
-                  ))}
+                      </li>
+                    )
+                  )}
                 </ul>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Bottom bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
-          <p className="text-xs text-[#555]">
-            © 2026 SettleX. Built on{" "}
-            <a
-              href="https://stellar.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#B9FF66] hover:underline"
-            >
-              Stellar Network
-            </a>
-            .
+        <div className="flex flex-col items-center justify-between gap-3 pt-6 sm:flex-row">
+          <p className="text-xs text-white/40">
+            © 2026 Belay · Running on Stellar Testnet
           </p>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#B9FF66] animate-pulse" />
-            <span className="text-xs text-[#555]">
-              Testnet Active
-            </span>
-          </div>
+          <p className="text-xs text-white/40">
+            Open source · No platform fees · Non-custodial
+          </p>
         </div>
       </div>
     </footer>

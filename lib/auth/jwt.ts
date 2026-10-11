@@ -108,7 +108,7 @@ export function verifyJwt(
  */
 export function walletToUuid(walletAddress: string): string {
   const bytes = createHash("sha256")
-    .update(`settlex:wallet:${walletAddress}`)
+    .update(`belay:wallet:${walletAddress}`)
     .digest()
     .subarray(0, 16);
   const uuid = Buffer.from(bytes);
@@ -152,7 +152,7 @@ export function issueAccessToken(params: {
     sub: walletToUuid(walletAddress),
     aud: "authenticated",
     role: "authenticated",
-    iss: "settlex",
+    iss: "belay",
     iat: issuedAt,
     exp: expiresAt,
     [WALLET_CLAIM]: walletAddress,

@@ -5,9 +5,9 @@
  *
  * `app/error.tsx` is rendered *inside* the root layout, so it cannot catch an
  * error thrown by the layout itself — a crash in a provider (wallet, toast,
- * expense context) would otherwise produce a blank page with nothing logged
- * anywhere. This boundary replaces the whole document, which is why it must
- * render its own <html> and <body> and cannot use the app's providers or
+ * agreement, milestone) would otherwise produce a blank page with nothing
+ * logged anywhere. This boundary replaces the whole document, which is why it
+ * must render its own <html> and <body> and cannot use the app's providers or
  * Tailwind-dependent chrome.
  *
  * Styles are inline for the same reason: if the failure was in the layout, the

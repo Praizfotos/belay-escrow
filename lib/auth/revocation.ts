@@ -7,7 +7,7 @@
  *
  * Each token now carries a `jti`, and revoking one writes that id to
  * `public.revoked_tokens`. Every RLS policy resolves identity through
- * `settlex_wallet()`, which returns NULL for a revoked jti, so a denied token
+ * `belay_wallet()`, which returns NULL for a revoked jti, so a denied token
  * matches no row on any table.
  *
  * Writing the denylist needs the service role key — a token must never be able
@@ -72,7 +72,7 @@ export async function revokeToken(params: {
   expiresAt: number;
 }): Promise<void> {
   try {
-    await rpc<unknown>("settlex_revoke_token", {
+    await rpc<unknown>("belay_revoke_token", {
       p_jti: params.jti,
       p_wallet_address: params.walletAddress,
       p_expires_at: new Date(params.expiresAt * 1000).toISOString(),
@@ -89,7 +89,7 @@ export async function revokeToken(params: {
  */
 export async function revokeWallet(walletAddress: string): Promise<number> {
   try {
-    return await rpc<number>("settlex_revoke_wallet", {
+    return await rpc<number>("belay_revoke_wallet", {
       p_wallet_address: walletAddress,
     });
   } catch (err) {

@@ -62,7 +62,21 @@ export const CONFIG_REQUIREMENTS: readonly ConfigRequirement[] = [
     name: "NEXT_PUBLIC_CONTRACT_ID",
     requirement: "required",
     buildTime: true,
-    impact: "No settlement contract to call; on-chain settlement is unavailable.",
+    impact: "No Belay agreement contract to call; escrow is unavailable.",
+  },
+  {
+    name: "NEXT_PUBLIC_VAULT_CONTRACT_ID",
+    requirement: "recommended",
+    buildTime: true,
+    impact:
+      "Milestone releases and refunds cannot be executed or read; the escrow vault is unavailable.",
+  },
+  {
+    name: "NEXT_PUBLIC_ESCROW_TOKEN_ID",
+    requirement: "recommended",
+    buildTime: true,
+    impact:
+      "Escrow-token balances cannot be read and funding amounts have no token address.",
   },
   {
     name: "NEXT_PUBLIC_SITE_URL",

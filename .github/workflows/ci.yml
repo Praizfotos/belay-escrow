@@ -23,6 +23,9 @@ jobs:
       # Public placeholders for CI only. Real values are injected in deployment environments.
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-key
+      NEXT_PUBLIC_CONTRACT_ID: CTestBelayContractIdForCi
+      NEXT_PUBLIC_VAULT_CONTRACT_ID: CTestVaultContractIdForCi
+      NEXT_PUBLIC_ESCROW_TOKEN_ID: CTestEscrowTokenIdForCi
 
     steps:
       - name: Checkout
@@ -90,7 +93,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          # Matches contract/rust-toolchain.toml: Soroban contracts build for
+          # wasm32v1-none, not wasm32-unknown-unknown.
+          targets: wasm32v1-none
 
       - name: Install Stellar CLI
         run: curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
@@ -99,22 +104,27 @@ jobs:
         working-directory: contract
         run: cargo test
 
-      - name: Build contract for WASM
-        run: |
-          rustup target add wasm32v1-none
-          stellar contract build --manifest-path contract/Cargo.toml
+      - name: Build contracts for WASM (belay-contract + belay-vault)
+        run: stellar contract build --manifest-path contract/Cargo.toml
 
-      - name: Check WASM size
+      - name: Check WASM size (both contracts)
         run: |
-          WASM_FILE=$(find target -name "*.wasm" | head -n 1)
-          if [ -z "$WASM_FILE" ]; then
-            echo "Error: WASM file not found!"
-            exit 1
-          fi
-          SIZE=$(stat -c%s "$WASM_FILE")
           MAX_SIZE=131072
-          echo "WASM size: $SIZE bytes"
-          if [ "$SIZE" -gt "$MAX_SIZE" ]; then
-            echo "Error: WASM size exceeds the deployment size limit of $MAX_SIZE bytes."
-            exit 1
-          fi
+          status=0
+          for WASM_FILE in \
+            contract/target/wasm32v1-none/release/belay_contract.wasm \
+            contract/target/wasm32v1-none/release/belay_vault.wasm
+          do
+            if [ ! -f "$WASM_FILE" ]; then
+              echo "Error: expected WASM artifact not found: $WASM_FILE"
+              status=1
+              continue
+            fi
+            SIZE=$(stat -c%s "$WASM_FILE")
+            echo "$WASM_FILE: $SIZE bytes (limit $MAX_SIZE)"
+            if [ "$SIZE" -gt "$MAX_SIZE" ]; then
+              echo "Error: $WASM_FILE exceeds the deployment size limit of $MAX_SIZE bytes."
+              status=1
+            fi
+          done
+          exit $status

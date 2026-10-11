@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 function post(headers: Record<string, string> = {}): Request {
-  return new Request("https://settlex.app/api/auth/verify", { method: "POST", headers });
+  return new Request("https://belay.app/api/auth/verify", { method: "POST", headers });
 }
 
 describe("requestLogger", () => {

@@ -1,6 +1,6 @@
-# SettleX Brand Guidelines
+# Belay Brand Guidelines
 
-The single source of truth for SettleX's visual identity. Keep it consistent across the app, marketing, decks, and partner materials.
+The single source of truth for Belay's visual identity. Keep it consistent across the app, marketing, decks, and partner materials.
 
 ## Logo & mark
 
@@ -22,13 +22,13 @@ Raster icons (favicon, Apple touch, PWA 192/512/maskable, social cards) are **ge
 ### Logo rules
 - **Clear space:** keep at least the height of the mark's square on all sides.
 - **Minimum size:** 24px tall for the mark; 100px wide for the horizontal lockup.
-- **Don't:** recolour the bolt; stretch or skew; add shadows/outlines; place the dark lockup on a dark background (use the inverse); rebuild the wordmark in another font.
+- **Don't:** recolour the mark; stretch or skew; add shadows/outlines; place the dark lockup on a dark background (use the inverse); rebuild the wordmark in another font.
 
 ## Colour
 
 | Token | Hex | Role |
 |---|---|---|
-| Lime accent | `#B9FF66` | Primary accent — button fills, highlights, the "X" |
+| Lime accent | `#B9FF66` | Primary accent — button fills, highlights, the Belay mark |
 | Lime dark | `#9AE040` | Hover/active on lime |
 | Lime light | `#D4FFB0` | Subtle tints |
 | Ink base | `#0F0F14` | Primary text, dark surfaces, the mark square |
@@ -37,8 +37,8 @@ Raster icons (favicon, Apple touch, PWA 192/512/maskable, social cards) are **ge
 | Neutral bg | `#F6F6F6` | App background (light) |
 | Neutral card | `#FFFFFF` | Cards (light) |
 | Neutral border | `#E5E5E5` | Borders (light) |
-| Destructive | `#DC2626` | Errors, failed payments |
-| Success | `#059669` | Confirmed payments |
+| Destructive | `#DC2626` | Errors, cancelled agreements |
+| Success | `#059669` | Released milestones |
 
 ### ⚠️ Contrast rule (accessibility, non-negotiable)
 Lime `#B9FF66` on white has a contrast ratio of ~1.3:1 — it is **invisible as text**. Lime is a *fill behind dark ink*, or an accent on dark backgrounds. **Never** use lime as foreground text, thin icons, or hairlines on light surfaces. Body text is always ink `#0F0F14` on light or white on dark (both pass WCAG AA).
@@ -50,4 +50,4 @@ Lime `#B9FF66` on white has a contrast ratio of ~1.3:1 — it is **invisible as 
 - Headline weights: 800–900. Body: 400–500. Buttons/labels: 600.
 
 ## Voice
-Confident, plain, honest. We say what the product does, not more. "Settle in seconds," not "revolutionary." Never imply custody, banking, or guarantees we don't provide.
+Confident, plain, honest. We say what the product does, not more. "Fund work milestone by milestone," not "revolutionary." Never imply banking, insurance, or guarantees we don't provide — the escrow is real custody of a token, but dispute resolution is still human.

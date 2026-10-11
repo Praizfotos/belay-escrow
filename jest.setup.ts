@@ -10,6 +10,12 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
 if (!process.env.NEXT_PUBLIC_CONTRACT_ID) {
   process.env.NEXT_PUBLIC_CONTRACT_ID = "CTestContractIdForJest";
 }
+if (!process.env.NEXT_PUBLIC_VAULT_CONTRACT_ID) {
+  process.env.NEXT_PUBLIC_VAULT_CONTRACT_ID = "CTestVaultContractIdForJest";
+}
+if (!process.env.NEXT_PUBLIC_ESCROW_TOKEN_ID) {
+  process.env.NEXT_PUBLIC_ESCROW_TOKEN_ID = "CTestEscrowTokenIdForJest";
+}
 
 if (!(global as any).TextEncoder) {
   (global as any).TextEncoder = TextEncoder;

@@ -1,160 +1,347 @@
 #![no_std]
 
-pub mod pool;
+//! Belay — milestone escrow agreements on Stellar Soroban.
+//!
+//! A client and a freelancer agree on a set of milestones. The client funds
+//! the agreement with a SEP-41 token (USDC by default); the tokens sit in a
+//! companion [`vault`] contract, never with Belay itself. The freelancer
+//! submits work milestone by milestone; the client approves, which releases
+//! that milestone's tokens to the freelancer. If the client goes quiet, the
+//! freelancer can escalate, and if the parties disagree an arbitrator (or the
+//! contract admin, when none is configured) resolves the disputed milestone.
+//!
+//! Funds can only leave the vault on the controller's instruction, and this
+//! contract only issues that instruction after checking the state machine and
+//! the right party's signature. See `docs/ARCHITECTURE_AND_LIMITATIONS.md`.
+
+pub mod vault_client;
+
+#[cfg(test)]
+mod test_token;
 
 use soroban_sdk::{
-    contract, contractimpl, contracterror, contracttype, panic_with_error, symbol_short,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
     Address, BytesN, Env, String, Vec,
 };
+
+use crate::vault_client::EscrowVaultClient;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Errors
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum ContractError {
-    InvalidAmount      = 1,
-    AlreadyPaid        = 2,
-    EmptyId            = 3,
-    AlreadyInitialized = 4,
-    NotInitialized     = 5,
-    InvalidActor       = 6,
-    IdTooLong          = 7,
-    AmountTooLarge     = 8,
-    VersionMismatch    = 9,
-    TxHashTooLong      = 10,
-    NotPaid            = 11,
-    Unauthorized       = 12,
-    InvalidPage        = 13,
-    IndexOverflow      = 14,
+pub enum BelayError {
+    InvalidAmount        = 1,
+    AmountTooLarge       = 2,
+    EmptyId              = 3,
+    IdTooLong            = 4,
+    TitleTooLong         = 5,
+    DescriptionTooLong   = 6,
+    EvidenceTooLong      = 7,
+    ReasonTooLong        = 8,
+    AlreadyInitialized   = 9,
+    NotInitialized       = 10,
+    InvalidActor         = 11,
+    AgreementExists      = 12,
+    AgreementNotFound    = 13,
+    MilestoneNotFound    = 14,
+    InvalidMilestoneIndex = 15,
+    TooManyMilestones    = 16,
+    MilestoneExists      = 17,
+    InvalidStatus        = 18,
+    NotFullyFunded       = 19,
+    AlreadyFullyFunded   = 20,
+    NotDisputed          = 21,
+    NoArbitrator         = 22,
+    Unauthorized         = 23,
+    CannotCancel         = 24,
+    NotOverdue           = 25,
+    VersionMismatch      = 26,
+    InvalidPage          = 27,
+    IndexOverflow        = 28,
+    InsufficientEscrow   = 29,
+    SameParty            = 30,
+    NoMilestones         = 31,
+    AlreadyTerminal      = 32,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Agreement lifecycle.
+///
+/// `Draft` covers both "no milestones yet" and "created, not fully funded".
+/// It becomes `Funded` the moment the escrowed total reaches the milestone
+/// total, and `Completed` when every milestone is terminal. `Cancelled` is a
+/// client-driven exit that refunds whatever is still escrowed.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgreementStatus {
+    Draft     = 0,
+    Funded    = 1,
+    Completed = 2,
+    Cancelled = 3,
+}
+
+/// Per-milestone lifecycle.
+///
+/// `Pending` → (submit) → `Submitted` → (approve) → `Released`
+///                                   ↘ (dispute/escalate) → `Disputed`
+///                                          → (resolve) → `Released` | `Refunded`
+/// `Pending` → (refund_overdue) → `Refunded`
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MilestoneStatus {
+    Pending   = 0,
+    Submitted = 1,
+    Released  = 2,
+    Refunded  = 3,
+    Disputed  = 4,
 }
 
 #[contracttype]
 #[derive(Clone)]
-pub struct PaymentRecordV1 {
-    pub expense_id: String,
-    pub payer:      Address,
-    pub member:     Address,
-    pub amount:     i128,
-    pub tx_hash:    String,
-    pub timestamp:  u64,
+pub struct Milestone {
+    pub index:        u32,
+    pub amount:       i128,
+    pub description:  String,
+    /// Absolute Unix timestamp after which the client may reclaim this
+    /// milestone if it was never submitted. `0` means "no deadline".
+    pub due_at:       u64,
+    pub status:       MilestoneStatus,
+    /// Free-form submission note from the freelancer; empty until submitted.
+    pub evidence:     String,
+    pub submitted_at: u64,
+    pub resolved_at:  u64,
 }
 
 #[contracttype]
 #[derive(Clone)]
-pub struct PaymentRecord {
-    pub expense_id: String,
-    pub payer:      Address,
-    pub member:     Address,
-    pub amount:     i128,
-    pub tx_hash:    String,
-    pub timestamp:  u64,
-    /// `true` only when a configured attestor co-signed this record, meaning
-    /// something actually checked the Stellar transaction behind `tx_hash`.
-    /// `false` means the record is self-attested by the member: the contract
-    /// stores the string but verifies nothing about it.
-    pub attested:   bool,
-    /// `true` when an admin has repudiated this record via `clear_paid`.
-    ///
-    /// Never persisted on the record itself: history is written once and left
-    /// alone, and rewriting every stored entry on a clear would be unbounded
-    /// work. `get_payments` sets this at read time from the `ClearedPayment`
-    /// marker, so the audit trail stays intact while consumers can still tell
-    /// that the admin disowned the entry.
-    pub voided:     bool,
+pub struct Agreement {
+    pub id:              String,
+    pub client:          Address,
+    pub freelancer:      Address,
+    pub title:           String,
+    pub status:          AgreementStatus,
+    /// Sum of every milestone amount.
+    pub total:           i128,
+    /// Tokens currently held by the vault for this agreement.
+    pub escrowed:        i128,
+    /// Cumulative tokens released to the freelancer.
+    pub released:        i128,
+    /// Cumulative tokens refunded to the client.
+    pub refunded:        i128,
+    pub milestone_count: u32,
+    pub created_at:      u64,
+    pub funded_at:       u64,
+    pub closed_at:       u64,
 }
 
 #[contracttype]
 #[derive(Clone)]
-pub struct PaymentPage {
-    pub payments:    Vec<PaymentRecord>,
-    /// Expense-index offset for the next page, or None when this is the last
-    /// page. The cursor advances by expense shards rather than payment count.
+pub struct AgreementPage {
+    pub agreements:  Vec<Agreement>,
+    /// Cursor for the next page, or `None` on the last page.
     pub next_offset: Option<u32>,
 }
 
-#[contracttype]
-#[derive(Clone)]
-pub struct PaymentEventV1 {
-    pub version:     u32,
-    pub expense_id:  String,
-    pub payer:       Address,
-    pub member:      Address,
-    pub amount:      i128,
-    pub tx_hash:     String,
-    pub timestamp:   u64,
-    pub attested:    bool,
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Events (versioned, one struct per event family)
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[contracttype]
 #[derive(Clone)]
-pub struct PoolConfigEventV1 {
+pub struct AgreementCreatedEventV1 {
     pub version:      u32,
-    pub pool_contract: Address,
-    pub updated_by:   Address,
+    pub agreement_id: String,
+    pub client:       Address,
+    pub freelancer:   Address,
+    pub title:        String,
     pub timestamp:    u64,
 }
 
 #[contracttype]
+#[derive(Clone)]
+pub struct MilestoneAddedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    pub amount:       i128,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AgreementFundedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub amount:       i128,
+    pub escrowed:     i128,
+    pub fully_funded: bool,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MilestoneSubmittedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    pub evidence:     String,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MilestoneApprovedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    pub amount:       i128,
+    pub freelancer:   Address,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MilestoneDisputedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    pub by:           Address,
+    pub reason:       String,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MilestoneResolvedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    /// `true` when the resolution paid the freelancer; `false` when it
+    /// refunded the client.
+    pub released:     bool,
+    pub amount:       i128,
+    pub resolver:     Address,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct MilestoneRefundedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub index:        u32,
+    pub amount:       i128,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AgreementCancelledEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub refunded:     i128,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct AgreementCompletedEventV1 {
+    pub version:      u32,
+    pub agreement_id: String,
+    pub released:     i128,
+    pub refunded:     i128,
+    pub timestamp:    u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ConfigEventV1 {
+    pub version:    u32,
+    pub subject:    Address,
+    pub updated_by: Address,
+    pub timestamp:  u64,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Storage
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[contracttype]
 pub enum DataKey {
-    /// Legacy v2 index. New writes migrate it once and then remove it.
-    TripExpenseIds(String),
-    /// Number of indexed expense shards for a trip.
-    TripExpenseCount(String),
-    /// One bounded index entry. A page reads at most MAX_PAGE_SIZE of these.
-    TripExpenseAt(String, u32),
-    /// O(1) membership marker, storing the expense's index.
-    TripExpenseIndex(String, String),
-    /// Payments for a specific trip and expense; prevents one huge ledger vector from
-    /// accumulating across the entire trip.
-    ExpensePayments(String, String),
-    ExpensePaid(String, Address),
-    Admin,
-    PoolContract,
+    // Instance
     Version,
-    /// Optional off-chain verifier. When set, it must co-sign every
-    /// `record_payment`; when unset, records are self-attested.
-    Attestor,
-    /// Marks an `(expense_id, member)` pair an admin repudiated with
-    /// `clear_paid`. Kept separately from the payment vectors so clearing a
-    /// flag stays O(1) and never rewrites stored history.
-    ClearedPayment(String, Address),
+    Admin,
+    Vault,
+    Arbitrator,
+    // Persistent — agreements
+    Agreement(String),
+    Milestones(String),
+    // Persistent — per-account agreement indexes (bounded shards)
+    ClientCount(Address),
+    ClientAt(Address, u32),
+    ClientIndex(Address, String),
+    FreelancerCount(Address),
+    FreelancerAt(Address, u32),
+    FreelancerIndex(Address, String),
 }
 
 const LEDGERS_PER_DAY:        u32 = 17_280;
 const STORAGE_BUMP_THRESHOLD: u32 = LEDGERS_PER_DAY * 30;
 const STORAGE_BUMP_AMOUNT:    u32 = LEDGERS_PER_DAY * 365;
-const CONTRACT_VERSION:       u32 = 2;
-const MIN_MIGRATABLE_VERSION:  u32 = 1;
+
+const CONTRACT_VERSION:       u32 = 1;
+const MIN_MIGRATABLE_VERSION: u32 = 1;
+
 const MAX_ID_LEN:             u32 = 64;
-const MAX_TX_HASH_LEN:        u32 = 128;
+const MAX_TITLE_LEN:          u32 = 120;
+const MAX_DESCRIPTION_LEN:    u32 = 240;
+const MAX_EVIDENCE_LEN:       u32 = 480;
+const MAX_REASON_LEN:         u32 = 240;
+const MAX_MILESTONES:         u32 = 24;
+const MAX_PAGE_SIZE:          u32 = 25;
 const MAX_AMOUNT_STROOPS:     i128 = 10_000_000_000_000_000;
-const MAX_PAGE_SIZE:          u32 = 50;
 
 #[contract]
-pub struct SettleXContract;
+pub struct BelayContract;
 
+// SDK 27 nudges event publishers toward `#[contractevent]`, but Belay's event
+// interface is frozen by `docs/AGENT_INTERFACE.md` and by the off-chain decoder:
+// several events share one payload struct under different topic symbols, and
+// `px_init`/`upgrade`/`migrate` carry tuple payloads. The low-level `publish`
+// API is the only one that expresses that interface exactly, so the deprecation
+// is allowed here rather than reshaping (and risking) the wire format.
+#[allow(deprecated)]
 #[contractimpl]
-impl SettleXContract {
+impl BelayContract {
+    // ── admin / lifecycle ────────────────────────────────────────────────
 
-    pub fn init(env: Env, admin: Address, pool_contract: Address) {
+    pub fn init(env: Env, admin: Address, vault: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, ContractError::AlreadyInitialized);
+            panic_with_error!(&env, BelayError::AlreadyInitialized);
         }
-
-        if admin == pool_contract {
-            panic_with_error!(&env, ContractError::InvalidActor);
+        if admin == vault {
+            panic_with_error!(&env, BelayError::InvalidActor);
         }
 
         admin.require_auth();
+
         env.storage().instance().set(&DataKey::Version, &CONTRACT_VERSION);
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::PoolContract, &pool_contract);
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+        env.storage().instance().set(&DataKey::Vault, &vault);
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
 
-        env.events().publish((symbol_short!("stx_ini"),), CONTRACT_VERSION);
+        env.events().publish((symbol_short!("px_init"),), CONTRACT_VERSION);
     }
 
-    /// Installs new WASM for this contract. If the replacement changes storage
-    /// shape or bumps `CONTRACT_VERSION`, call `migrate` after upgrading.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         let admin = Self::require_admin_at_supported_version(&env);
         env.deployer().update_current_contract_wasm(new_wasm_hash);
@@ -164,23 +351,20 @@ impl SettleXContract {
         );
     }
 
-    /// Bumps instance state from a supported older version to the current one.
-    ///
-    /// v1 payment vectors remain readable through `get_payments`, which maps
-    /// them to v2 records with `attested: false`. v1 did not keep a global trip
-    /// index, so this avoids an impossible full-ledger enumeration.
     pub fn migrate(env: Env) {
         let old_version = Self::read_version(&env);
         if old_version == CONTRACT_VERSION {
             return;
         }
         if old_version < MIN_MIGRATABLE_VERSION || old_version > CONTRACT_VERSION {
-            panic_with_error!(&env, ContractError::VersionMismatch);
+            panic_with_error!(&env, BelayError::VersionMismatch);
         }
 
         let admin = Self::require_admin_at_supported_version(&env);
         env.storage().instance().set(&DataKey::Version, &CONTRACT_VERSION);
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
 
         env.events().publish(
             (symbol_short!("migrate"),),
@@ -188,1466 +372,900 @@ impl SettleXContract {
         );
     }
 
-    pub fn set_pool_contract(env: Env, pool_contract: Address) {
-        Self::require_current_version(&env);
-
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized));
-
-        if pool_contract == admin {
-            panic_with_error!(&env, ContractError::InvalidActor);
+    pub fn set_vault(env: Env, vault: Address) {
+        let admin = Self::require_admin(&env);
+        if vault == admin {
+            panic_with_error!(&env, BelayError::InvalidActor);
         }
 
-        admin.require_auth();
-        env.storage().instance().set(&DataKey::PoolContract, &pool_contract);
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+        env.storage().instance().set(&DataKey::Vault, &vault);
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
 
         env.events().publish(
-            (symbol_short!("pool_cfg"),),
-            PoolConfigEventV1 {
-                version: CONTRACT_VERSION,
-                pool_contract,
+            (symbol_short!("vault_cfg"),),
+            ConfigEventV1 {
+                version:    CONTRACT_VERSION,
+                subject:    vault,
                 updated_by: admin,
-                timestamp: env.ledger().timestamp(),
+                timestamp:  env.ledger().timestamp(),
             },
         );
     }
 
-    pub fn get_pool_contract(env: Env) -> Address {
-        Self::require_current_version(&env);
-
-        let pool = env.storage()
-            .instance()
-            .get(&DataKey::PoolContract)
-            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized));
-
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-        pool
-    }
-
-    /// Reads the admin, panicking if the contract is uninitialized or on a
-    /// different version.
-    fn require_admin(env: &Env) -> Address {
-        Self::require_current_version(env);
-        Self::require_admin_at_supported_version(env)
-    }
-
-    fn read_version(env: &Env) -> u32 {
+    pub fn get_vault(env: Env) -> Address {
+        let vault = Self::read_vault(&env);
         env.storage()
             .instance()
-            .get(&DataKey::Version)
-            .unwrap_or_else(|| panic_with_error!(env, ContractError::NotInitialized))
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+        vault
     }
 
-    fn require_current_version(env: &Env) {
-        if Self::read_version(env) != CONTRACT_VERSION {
-            panic_with_error!(env, ContractError::VersionMismatch);
+    /// Configures the arbitrator that resolves disputed milestones. Until one
+    /// is set, only the contract admin can resolve disputes.
+    pub fn set_arbitrator(env: Env, arbitrator: Address) {
+        let admin = Self::require_admin(&env);
+        if arbitrator == admin {
+            panic_with_error!(&env, BelayError::InvalidActor);
         }
+
+        env.storage().instance().set(&DataKey::Arbitrator, &arbitrator);
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+
+        env.events().publish(
+            (symbol_short!("arb_set"),),
+            ConfigEventV1 {
+                version:    CONTRACT_VERSION,
+                subject:    arbitrator,
+                updated_by: admin,
+                timestamp:  env.ledger().timestamp(),
+            },
+        );
     }
 
-    fn require_admin_at_supported_version(env: &Env) -> Address {
-        let version = Self::read_version(env);
-        if version < MIN_MIGRATABLE_VERSION || version > CONTRACT_VERSION {
-            panic_with_error!(env, ContractError::VersionMismatch);
+    pub fn clear_arbitrator(env: Env) {
+        let admin = Self::require_admin(&env);
+        env.storage().instance().remove(&DataKey::Arbitrator);
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+
+        env.events().publish(
+            (symbol_short!("arb_clr"),),
+            ConfigEventV1 {
+                version:    CONTRACT_VERSION,
+                subject:    admin.clone(),
+                updated_by: admin,
+                timestamp:  env.ledger().timestamp(),
+            },
+        );
+    }
+
+    pub fn get_arbitrator(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Arbitrator)
+    }
+
+    // ── agreement setup ──────────────────────────────────────────────────
+
+    /// Creates the agreement shell. Milestones are added next with
+    /// `add_milestone`, in order, until the schedule is complete and the
+    /// client funds it.
+    pub fn create_agreement(
+        env: Env,
+        agreement_id: String,
+        client: Address,
+        freelancer: Address,
+        title: String,
+    ) {
+        Self::require_current_version(&env);
+
+        client.require_auth();
+
+        if client == freelancer {
+            panic_with_error!(&env, BelayError::SameParty);
         }
-        let admin: Address = env
-            .storage()
+        Self::validate_id(&env, &agreement_id);
+        Self::validate_bounded(&env, &title, MAX_TITLE_LEN, BelayError::EmptyId, BelayError::TitleTooLong);
+
+        let key = DataKey::Agreement(agreement_id.clone());
+        if env.storage().persistent().has(&key) {
+            panic_with_error!(&env, BelayError::AgreementExists);
+        }
+
+        let agreement = Agreement {
+            id:              agreement_id.clone(),
+            client:          client.clone(),
+            freelancer:      freelancer.clone(),
+            title:           title.clone(),
+            status:          AgreementStatus::Draft,
+            total:           0,
+            escrowed:        0,
+            released:        0,
+            refunded:        0,
+            milestone_count: 0,
+            created_at:      env.ledger().timestamp(),
+            funded_at:       0,
+            closed_at:       0,
+        };
+        Self::write_agreement(&env, &agreement);
+        Self::write_milestones(&env, &agreement_id, &Vec::new(&env));
+
+        Self::index_account(&env, &client, true, &agreement_id);
+        Self::index_account(&env, &freelancer, false, &agreement_id);
+
+        env.storage()
+            .instance()
+            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+
+        env.events().publish(
+            (symbol_short!("agr_cre"), agreement_id.clone()),
+            AgreementCreatedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                client,
+                freelancer,
+                title,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Appends a milestone. Only the client may add; indexes must be
+    /// sequential (`0, 1, 2…`) so the schedule is impossible to reorder.
+    pub fn add_milestone(
+        env: Env,
+        agreement_id: String,
+        index: u32,
+        amount: i128,
+        description: String,
+        due_at: u64,
+    ) {
+        Self::require_current_version(&env);
+        Self::validate_amount(&env, amount);
+        Self::validate_bounded(
+            &env,
+            &description,
+            MAX_DESCRIPTION_LEN,
+            BelayError::DescriptionTooLong,
+            BelayError::DescriptionTooLong,
+        );
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.client.require_auth();
+
+        if agreement.status != AgreementStatus::Draft {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+        if agreement.escrowed != 0 {
+            // Once any funding lands the schedule is frozen: changing amounts
+            // afterwards would break the escrow accounting.
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+        if index != agreement.milestone_count {
+            panic_with_error!(&env, BelayError::InvalidMilestoneIndex);
+        }
+        if index >= MAX_MILESTONES {
+            panic_with_error!(&env, BelayError::TooManyMilestones);
+        }
+
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        milestones.push_back(Milestone {
+            index,
+            amount,
+            description:  description.clone(),
+            due_at,
+            status:       MilestoneStatus::Pending,
+            evidence:     String::from_str(&env, ""),
+            submitted_at: 0,
+            resolved_at:  0,
+        });
+
+        agreement.total = agreement
+            .total
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+        if agreement.total > MAX_AMOUNT_STROOPS {
+            panic_with_error!(&env, BelayError::AmountTooLarge);
+        }
+        agreement.milestone_count += 1;
+
+        Self::write_agreement(&env, &agreement);
+        Self::write_milestones(&env, &agreement_id, &milestones);
+
+        env.events().publish(
+            (symbol_short!("mil_add"), agreement_id.clone()),
+            MilestoneAddedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                amount,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Funds the agreement by locking `amount` tokens in the vault. Partial
+    /// funding is allowed; the agreement flips to `Funded` when the escrowed
+    /// total reaches the milestone total.
+    pub fn fund_agreement(env: Env, agreement_id: String, amount: i128) {
+        Self::require_current_version(&env);
+        Self::validate_amount(&env, amount);
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.client.require_auth();
+
+        if agreement.status != AgreementStatus::Draft {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+        if agreement.milestone_count == 0 {
+            panic_with_error!(&env, BelayError::NoMilestones);
+        }
+        if agreement.escrowed >= agreement.total {
+            panic_with_error!(&env, BelayError::AlreadyFullyFunded);
+        }
+
+        let next_escrowed = agreement
+            .escrowed
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+        if next_escrowed > agreement.total {
+            // Over-funding would lock more than the schedule can ever pay out.
+            panic_with_error!(&env, BelayError::AmountTooLarge);
+        }
+
+        let vault = Self::vault_client(&env);
+        vault.fund(&agreement_id, &agreement.client, &amount);
+
+        agreement.escrowed = next_escrowed;
+        let fully_funded = agreement.escrowed == agreement.total;
+        if fully_funded {
+            agreement.status = AgreementStatus::Funded;
+            agreement.funded_at = env.ledger().timestamp();
+        }
+        Self::write_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("agr_fund"), agreement_id.clone()),
+            AgreementFundedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                amount,
+                escrowed:     agreement.escrowed,
+                fully_funded,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    // ── milestone lifecycle ──────────────────────────────────────────────
+
+    /// Freelancer marks a milestone delivered, attaching a note or link to
+    /// the evidence.
+    pub fn submit_milestone(env: Env, agreement_id: String, index: u32, evidence: String) {
+        Self::require_current_version(&env);
+        Self::validate_bounded(
+            &env,
+            &evidence,
+            MAX_EVIDENCE_LEN,
+            BelayError::EvidenceTooLong,
+            BelayError::EvidenceTooLong,
+        );
+
+        let agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.freelancer.require_auth();
+
+        if agreement.status != AgreementStatus::Funded {
+            panic_with_error!(&env, BelayError::NotFullyFunded);
+        }
+
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        let mut milestone = Self::milestone_at(&env, &milestones, index);
+        if milestone.status != MilestoneStatus::Pending {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+
+        milestone.status       = MilestoneStatus::Submitted;
+        milestone.evidence     = evidence.clone();
+        milestone.submitted_at = env.ledger().timestamp();
+        milestones.set(index, milestone);
+
+        Self::write_milestones(&env, &agreement_id, &milestones);
+        Self::bump_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("mil_sub"), agreement_id.clone()),
+            MilestoneSubmittedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                evidence,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Client accepts the submitted milestone. This is the single operation
+    /// that moves money: the vault releases the milestone amount to the
+    /// freelancer.
+    pub fn approve_milestone(env: Env, agreement_id: String, index: u32) {
+        Self::require_current_version(&env);
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.client.require_auth();
+
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        let mut milestone = Self::milestone_at(&env, &milestones, index);
+        if milestone.status != MilestoneStatus::Submitted {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+        if agreement.escrowed < milestone.amount {
+            panic_with_error!(&env, BelayError::InsufficientEscrow);
+        }
+
+        let vault = Self::vault_client(&env);
+        vault.release(&agreement_id, &agreement.freelancer, &milestone.amount);
+
+        milestone.status      = MilestoneStatus::Released;
+        milestone.resolved_at = env.ledger().timestamp();
+        milestones.set(index, milestone.clone());
+
+        agreement.escrowed -= milestone.amount;
+        agreement.released = agreement
+            .released
+            .checked_add(milestone.amount)
+            .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+
+        Self::write_milestones(&env, &agreement_id, &milestones);
+        Self::maybe_complete(&env, &mut agreement);
+        Self::write_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("mil_appr"), agreement_id.clone()),
+            MilestoneApprovedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                amount:       milestone.amount,
+                freelancer:   agreement.freelancer.clone(),
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Client rejects a submitted milestone. The milestone amount stays
+    /// escrowed until the arbitrator (or admin) resolves it.
+    pub fn dispute_milestone(env: Env, agreement_id: String, index: u32, reason: String) {
+        Self::dispute_internal(&env, agreement_id, index, reason, true);
+    }
+
+    /// Freelancer escalates a milestone the client never answers. Same
+    /// `Disputed` state and same resolution path as `dispute_milestone`.
+    pub fn escalate_milestone(env: Env, agreement_id: String, index: u32, reason: String) {
+        Self::dispute_internal(&env, agreement_id, index, reason, false);
+    }
+
+    /// Resolves a disputed milestone. The arbitrator resolves when one is
+    /// configured; otherwise the contract admin does. `in_freelancer_favor`
+    /// chooses whether the milestone pays out or is refunded.
+    pub fn resolve_dispute(env: Env, agreement_id: String, index: u32, in_freelancer_favor: bool) {
+        Self::require_current_version(&env);
+
+        let resolver = Self::resolve_authority(&env);
+        resolver.require_auth();
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        let mut milestone = Self::milestone_at(&env, &milestones, index);
+
+        if milestone.status != MilestoneStatus::Disputed {
+            panic_with_error!(&env, BelayError::NotDisputed);
+        }
+        if agreement.escrowed < milestone.amount {
+            panic_with_error!(&env, BelayError::InsufficientEscrow);
+        }
+
+        let vault = Self::vault_client(&env);
+        if in_freelancer_favor {
+            vault.release(&agreement_id, &agreement.freelancer, &milestone.amount);
+            milestone.status = MilestoneStatus::Released;
+            agreement.released = agreement
+                .released
+                .checked_add(milestone.amount)
+                .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+        } else {
+            vault.refund(&agreement_id, &agreement.client, &milestone.amount);
+            milestone.status = MilestoneStatus::Refunded;
+            agreement.refunded = agreement
+                .refunded
+                .checked_add(milestone.amount)
+                .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+        }
+        milestone.resolved_at = env.ledger().timestamp();
+        milestones.set(index, milestone.clone());
+
+        agreement.escrowed -= milestone.amount;
+
+        Self::write_milestones(&env, &agreement_id, &milestones);
+        Self::maybe_complete(&env, &mut agreement);
+        Self::write_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("mil_res"), agreement_id.clone()),
+            MilestoneResolvedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                released:     in_freelancer_favor,
+                amount:       milestone.amount,
+                resolver,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Client reclaims a milestone the freelancer never submitted once its
+    /// deadline has passed. Only `Pending` milestones are eligible.
+    pub fn refund_overdue_milestone(env: Env, agreement_id: String, index: u32) {
+        Self::require_current_version(&env);
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.client.require_auth();
+
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        let mut milestone = Self::milestone_at(&env, &milestones, index);
+
+        if milestone.status != MilestoneStatus::Pending {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+        if milestone.due_at == 0 || env.ledger().timestamp() < milestone.due_at {
+            panic_with_error!(&env, BelayError::NotOverdue);
+        }
+        if agreement.escrowed < milestone.amount {
+            panic_with_error!(&env, BelayError::InsufficientEscrow);
+        }
+
+        let vault = Self::vault_client(&env);
+        vault.refund(&agreement_id, &agreement.client, &milestone.amount);
+
+        milestone.status      = MilestoneStatus::Refunded;
+        milestone.resolved_at = env.ledger().timestamp();
+        milestones.set(index, milestone.clone());
+
+        agreement.escrowed -= milestone.amount;
+        agreement.refunded = agreement
+            .refunded
+            .checked_add(milestone.amount)
+            .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+
+        Self::write_milestones(&env, &agreement_id, &milestones);
+        Self::maybe_complete(&env, &mut agreement);
+        Self::write_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("mil_ref"), agreement_id.clone()),
+            MilestoneRefundedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                amount:       milestone.amount,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Client exits an agreement that has not been delivered on. Refused once
+    /// any milestone is `Submitted` or `Disputed` — those must be resolved
+    /// first so the freelancer is not cut off mid-review. Every remaining
+    /// `Pending` milestone is refunded.
+    pub fn cancel_agreement(env: Env, agreement_id: String) {
+        Self::require_current_version(&env);
+
+        let mut agreement = Self::read_agreement(&env, &agreement_id);
+        agreement.client.require_auth();
+
+        if agreement.status == AgreementStatus::Completed
+            || agreement.status == AgreementStatus::Cancelled
+        {
+            panic_with_error!(&env, BelayError::InvalidStatus);
+        }
+
+        let mut milestones = Self::read_milestones(&env, &agreement_id);
+        for milestone in milestones.iter() {
+            if milestone.status == MilestoneStatus::Submitted
+                || milestone.status == MilestoneStatus::Disputed
+            {
+                panic_with_error!(&env, BelayError::CannotCancel);
+            }
+        }
+
+        let refundable = agreement.escrowed;
+        if refundable > 0 {
+            let vault = Self::vault_client(&env);
+            vault.refund(&agreement_id, &agreement.client, &refundable);
+        }
+
+        for position in 0..milestones.len() {
+            let mut milestone = milestones.get(position).unwrap();
+            if milestone.status == MilestoneStatus::Pending {
+                milestone.status      = MilestoneStatus::Refunded;
+                milestone.resolved_at = env.ledger().timestamp();
+                milestones.set(position, milestone);
+            }
+        }
+
+        agreement.escrowed  = 0;
+        agreement.refunded = agreement
+            .refunded
+            .checked_add(refundable)
+            .unwrap_or_else(|| panic_with_error!(&env, BelayError::AmountTooLarge));
+        agreement.status    = AgreementStatus::Cancelled;
+        agreement.closed_at = env.ledger().timestamp();
+
+        Self::write_milestones(&env, &agreement_id, &milestones);
+        Self::write_agreement(&env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("agr_cnc"), agreement_id.clone()),
+            AgreementCancelledEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                refunded:     refundable,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    // ── reads ────────────────────────────────────────────────────────────
+
+    pub fn has_agreement(env: Env, agreement_id: String) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::Agreement(agreement_id))
+    }
+
+    pub fn get_agreement(env: Env, agreement_id: String) -> Agreement {
+        let agreement = Self::read_agreement(&env, &agreement_id);
+        Self::bump_agreement(&env, &agreement);
+        agreement
+    }
+
+    /// Returns every milestone for an agreement. The schedule is capped at
+    /// [`MAX_MILESTONES`], so this stays a bounded read and needs no paging.
+    pub fn get_milestones(env: Env, agreement_id: String) -> Vec<Milestone> {
+        // Reuse the agreement read so a missing agreement panics consistently.
+        let agreement = Self::read_agreement(&env, &agreement_id);
+        let milestones = Self::read_milestones(&env, &agreement_id);
+        Self::bump_agreement(&env, &agreement);
+        Self::bump_milestones(&env, &agreement_id);
+        milestones
+    }
+
+    pub fn get_client_agreements(
+        env: Env,
+        client: Address,
+        offset: u32,
+        limit: u32,
+    ) -> AgreementPage {
+        Self::page_account(&env, &client, true, offset, limit)
+    }
+
+    pub fn get_freelancer_agreements(
+        env: Env,
+        freelancer: Address,
+        offset: u32,
+        limit: u32,
+    ) -> AgreementPage {
+        Self::page_account(&env, &freelancer, false, offset, limit)
+    }
+
+    // ── internals ────────────────────────────────────────────────────────
+
+    fn dispute_internal(env: &Env, agreement_id: String, index: u32, reason: String, by_client: bool) {
+        Self::require_current_version(env);
+        Self::validate_bounded(
+            env,
+            &reason,
+            MAX_REASON_LEN,
+            BelayError::ReasonTooLong,
+            BelayError::ReasonTooLong,
+        );
+
+        let agreement = Self::read_agreement(env, &agreement_id);
+        let by = if by_client {
+            agreement.client.require_auth();
+            agreement.client.clone()
+        } else {
+            agreement.freelancer.require_auth();
+            agreement.freelancer.clone()
+        };
+
+        let mut milestones = Self::read_milestones(env, &agreement_id);
+        let mut milestone = Self::milestone_at(env, &milestones, index);
+        if milestone.status != MilestoneStatus::Submitted {
+            panic_with_error!(env, BelayError::InvalidStatus);
+        }
+
+        milestone.status = MilestoneStatus::Disputed;
+        milestones.set(index, milestone);
+
+        Self::write_milestones(env, &agreement_id, &milestones);
+        Self::bump_agreement(env, &agreement);
+
+        env.events().publish(
+            (symbol_short!("mil_dsp"), agreement_id.clone()),
+            MilestoneDisputedEventV1 {
+                version:      CONTRACT_VERSION,
+                agreement_id,
+                index,
+                by,
+                reason,
+                timestamp:    env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// The arbitrator when configured, otherwise the admin.
+    fn resolve_authority(env: &Env) -> Address {
+        if let Some(arbitrator) = env.storage().instance().get::<_, Address>(&DataKey::Arbitrator) {
+            return arbitrator;
+        }
+        env.storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(env, ContractError::NotInitialized));
-        admin.require_auth();
-        admin
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::NotInitialized))
     }
 
-    /// Converts the legacy per-trip vector once, on the first post-upgrade
-    /// write. New trips simply receive an empty counter. Keeping migration on
-    /// a write is intentional: simulated read calls cannot persist it.
-    fn ensure_trip_expense_index(env: &Env, trip_id: &String) {
-        let count_key = DataKey::TripExpenseCount(trip_id.clone());
-        if env.storage().persistent().has(&count_key) {
+    /// Marks the agreement completed once no milestone can still change.
+    fn maybe_complete(env: &Env, agreement: &mut Agreement) {
+        let milestones = Self::read_milestones(env, &agreement.id);
+        let settled = milestones.iter().all(|m| {
+            m.status == MilestoneStatus::Released || m.status == MilestoneStatus::Refunded
+        });
+
+        if settled && agreement.status == AgreementStatus::Funded {
+            agreement.status    = AgreementStatus::Completed;
+            agreement.closed_at = env.ledger().timestamp();
+
+            env.events().publish(
+                (symbol_short!("agr_cmp"), agreement.id.clone()),
+                AgreementCompletedEventV1 {
+                    version:      CONTRACT_VERSION,
+                    agreement_id: agreement.id.clone(),
+                    released:     agreement.released,
+                    refunded:     agreement.refunded,
+                    timestamp:    env.ledger().timestamp(),
+                },
+            );
+        }
+    }
+
+    fn index_account(env: &Env, account: &Address, as_client: bool, agreement_id: &String) {
+        let index_key = if as_client {
+            DataKey::ClientIndex(account.clone(), agreement_id.clone())
+        } else {
+            DataKey::FreelancerIndex(account.clone(), agreement_id.clone())
+        };
+
+        if env.storage().persistent().has(&index_key) {
             return;
         }
 
-        let legacy_key = DataKey::TripExpenseIds(trip_id.clone());
-        let legacy_expenses: Vec<String> = env
-            .storage()
-            .persistent()
-            .get(&legacy_key)
-            .unwrap_or_else(|| Vec::new(env));
-        let mut count = 0_u32;
-
-        for expense_id in legacy_expenses.iter() {
-            let marker_key =
-                DataKey::TripExpenseIndex(trip_id.clone(), expense_id.clone());
-            if env.storage().persistent().has(&marker_key) {
-                continue;
-            }
-
-            let entry_key = DataKey::TripExpenseAt(trip_id.clone(), count);
-            env.storage().persistent().set(&entry_key, &expense_id);
-            env.storage().persistent().set(&marker_key, &count);
-            env.storage().persistent().extend_ttl(
-                &entry_key,
-                STORAGE_BUMP_THRESHOLD,
-                STORAGE_BUMP_AMOUNT,
-            );
-            env.storage().persistent().extend_ttl(
-                &marker_key,
-                STORAGE_BUMP_THRESHOLD,
-                STORAGE_BUMP_AMOUNT,
-            );
-            count = count
-                .checked_add(1)
-                .unwrap_or_else(|| panic_with_error!(env, ContractError::IndexOverflow));
-        }
-
-        env.storage().persistent().set(&count_key, &count);
-        env.storage().persistent().extend_ttl(
-            &count_key,
-            STORAGE_BUMP_THRESHOLD,
-            STORAGE_BUMP_AMOUNT,
-        );
-        if env.storage().persistent().has(&legacy_key) {
-            env.storage().persistent().remove(&legacy_key);
-        }
-    }
-
-    /// Configures the off-chain verifier that must co-sign `record_payment`.
-    ///
-    /// This is the hook for binding a record to something real: a verifier that
-    /// checks the Horizon transaction (payer, destination, amount, memo) before
-    /// co-signing. Until one is set, records are self-attested and prove only
-    /// that the member wrote a string — see `attested` on `PaymentRecord`.
-    pub fn set_attestor(env: Env, attestor: Address) {
-        let admin = Self::require_admin(&env);
-
-        if attestor == admin {
-            panic_with_error!(&env, ContractError::InvalidActor);
-        }
-
-        env.storage().instance().set(&DataKey::Attestor, &attestor);
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.events().publish(
-            (symbol_short!("attestor"),),
-            PoolConfigEventV1 {
-                version: CONTRACT_VERSION,
-                pool_contract: attestor,
-                updated_by: admin,
-                timestamp: env.ledger().timestamp(),
-            },
-        );
-    }
-
-    /// Removes the attestor requirement, returning the contract to
-    /// self-attested records.
-    pub fn clear_attestor(env: Env) {
-        let admin = Self::require_admin(&env);
-        env.storage().instance().remove(&DataKey::Attestor);
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.events().publish(
-            (symbol_short!("attest_c"),),
-            (CONTRACT_VERSION, admin, env.ledger().timestamp()),
-        );
-    }
-
-    /// The configured attestor, or `None` when records are self-attested.
-    pub fn get_attestor(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::Attestor)
-    }
-
-    /// Admin-gated escape hatch for the paid flag.
-    ///
-    /// Without this, a bogus or mistaken record for `(expense_id, member)` locks
-    /// that pair forever: `record_payment` panics with `AlreadyPaid` and the
-    /// legitimate record can never be written. Clearing the flag lets the real
-    /// payment be recorded.
-    ///
-    /// It deliberately does NOT remove the original entry from the trip's
-    /// payment history — the audit trail stays intact, and the fact that a flag
-    /// was cleared is emitted as an event.
-    pub fn clear_paid(env: Env, expense_id: String, member: Address) {
-        let admin = Self::require_admin(&env);
-
-        if expense_id.len() == 0 {
-            panic_with_error!(&env, ContractError::EmptyId);
-        }
-        if expense_id.len() > MAX_ID_LEN {
-            panic_with_error!(&env, ContractError::IdTooLong);
-        }
-
-        let paid_key = DataKey::ExpensePaid(expense_id.clone(), member.clone());
-        if !env.storage().persistent().has(&paid_key) {
-            panic_with_error!(&env, ContractError::NotPaid);
-        }
-
-        env.storage().persistent().remove(&paid_key);
-
-        // Mark the pair repudiated so `get_payments` can flag the original
-        // record. Without this the cleared entry stays in trip history
-        // indistinguishable from a legitimate one, and only the `pmt_clr`
-        // event -- which no consumer reads -- says otherwise.
-        let cleared_key = DataKey::ClearedPayment(expense_id.clone(), member.clone());
-        env.storage().persistent().set(&cleared_key, &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(&cleared_key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.events().publish(
-            (symbol_short!("pmt_clr"), expense_id),
-            (CONTRACT_VERSION, member, admin, env.ledger().timestamp()),
-        );
-    }
-
-    pub fn record_payment(
-        env:        Env,
-        trip_id:    String,
-        expense_id: String,
-        payer:      Address,
-        member:     Address,
-        amount:     i128,
-        tx_hash:    String,
-    ) {
-        member.require_auth();
-
-        if amount <= 0 {
-            panic_with_error!(&env, ContractError::InvalidAmount);
-        }
-        if amount > MAX_AMOUNT_STROOPS {
-            panic_with_error!(&env, ContractError::AmountTooLarge);
-        }
-        if payer == member {
-            panic_with_error!(&env, ContractError::InvalidActor);
-        }
-        if trip_id.len() == 0 || expense_id.len() == 0 || tx_hash.len() == 0 {
-            panic_with_error!(&env, ContractError::EmptyId);
-        }
-        if trip_id.len() > MAX_ID_LEN || expense_id.len() > MAX_ID_LEN {
-            panic_with_error!(&env, ContractError::IdTooLong);
-        }
-        if tx_hash.len() > MAX_TX_HASH_LEN {
-            panic_with_error!(&env, ContractError::TxHashTooLong);
-        }
-
-        let version: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Version)
-            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized));
-        if version != CONTRACT_VERSION {
-            panic_with_error!(&env, ContractError::VersionMismatch);
-        }
-
-        let paid_key = DataKey::ExpensePaid(expense_id.clone(), member.clone());
-        if env.storage().persistent().has(&paid_key) {
-            panic_with_error!(&env, ContractError::AlreadyPaid);
-        }
-
-        // When an attestor is configured it must co-sign, which is what lets a
-        // record mean "the Stellar transaction behind this hash was checked".
-        // With no attestor the record is self-attested: the contract stores
-        // `payer`, `amount` and `tx_hash` exactly as given and verifies none of
-        // them. `attested` carries that distinction to every consumer.
-        let attestor: Option<Address> = env.storage().instance().get(&DataKey::Attestor);
-        let attested = match attestor {
-            Some(addr) => {
-                addr.require_auth();
-                true
-            }
-            None => false,
-        };
-
-        // Re-recording a pair an admin previously cleared is the intended
-        // recovery path, so drop the stale repudiation rather than letting it
-        // void the replacement record too.
-        let cleared_key = DataKey::ClearedPayment(expense_id.clone(), member.clone());
-        if env.storage().persistent().has(&cleared_key) {
-            env.storage().persistent().remove(&cleared_key);
-        }
-
-        let record = PaymentRecord {
-            expense_id: expense_id.clone(),
-            payer: payer.clone(),
-            member:    member.clone(),
-            amount,
-            tx_hash: tx_hash.clone(),
-            timestamp: env.ledger().timestamp(),
-            attested,
-            voided: false,
-        };
-
-        let expense_key = DataKey::ExpensePayments(trip_id.clone(), expense_id.clone());
-        let mut payments: Vec<PaymentRecord> = env
-            .storage()
-            .persistent()
-            .get(&expense_key)
-            .unwrap_or_else(|| Vec::new(&env));
-        payments.push_back(record);
-        env.storage().persistent().set(&expense_key, &payments);
-        env.storage()
-            .persistent()
-            .extend_ttl(&expense_key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        Self::ensure_trip_expense_index(&env, &trip_id);
-        let count_key = DataKey::TripExpenseCount(trip_id.clone());
-        let marker_key =
-            DataKey::TripExpenseIndex(trip_id.clone(), expense_id.clone());
-        let expense_index: u32;
-
-        if let Some(existing_index) = env.storage().persistent().get(&marker_key) {
-            expense_index = existing_index;
+        let count_key = if as_client {
+            DataKey::ClientCount(account.clone())
         } else {
-            let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
-            expense_index = count;
-            let next_count = count
-                .checked_add(1)
-                .unwrap_or_else(|| panic_with_error!(&env, ContractError::IndexOverflow));
-            env.storage().persistent().set(&marker_key, &expense_index);
-            env.storage().persistent().set(&count_key, &next_count);
+            DataKey::FreelancerCount(account.clone())
+        };
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        let at_key = if as_client {
+            DataKey::ClientAt(account.clone(), count)
+        } else {
+            DataKey::FreelancerAt(account.clone(), count)
+        };
+        let next = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::IndexOverflow));
+
+        env.storage().persistent().set(&index_key, &count);
+        env.storage().persistent().set(&at_key, agreement_id);
+        env.storage().persistent().set(&count_key, &next);
+        for key in [&count_key, &at_key, &index_key] {
+            env.storage()
+                .persistent()
+                .extend_ttl(key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
         }
-
-        let entry_key = DataKey::TripExpenseAt(trip_id.clone(), expense_index);
-        env.storage().persistent().set(&entry_key, &expense_id);
-        for index_key in [&count_key, &marker_key, &entry_key] {
-            env.storage().persistent().extend_ttl(
-                index_key,
-                STORAGE_BUMP_THRESHOLD,
-                STORAGE_BUMP_AMOUNT,
-            );
-        }
-
-        env.storage().persistent().set(&paid_key, &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(&paid_key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.storage().instance().extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-
-        env.events().publish(
-            (symbol_short!("pmt_rec"), trip_id),
-            PaymentEventV1 {
-                version: CONTRACT_VERSION,
-                expense_id,
-                payer,
-                member,
-                amount,
-                tx_hash,
-                timestamp: env.ledger().timestamp(),
-                attested,
-            },
-        );
     }
 
-    /// Returns one bounded page of expense shards and renews only the keys that
-    /// page touched. offset and limit are expense-index positions, not payment
-    /// counts; next_offset is therefore the only cursor callers should follow.
-    ///
-    /// Only `record_payment` used to bump these keys, so a trip that is read
-    /// often but written rarely could have its entries archived once the bump
-    /// window elapsed -- leaving the history unreadable until someone paid a
-    /// restore fee. Extending on read keeps live data live, the same way
-    /// `pool::balance_of` does.
-    pub fn get_payments(
-        env: Env,
-        trip_id: String,
+    fn page_account(
+        env: &Env,
+        account: &Address,
+        as_client: bool,
         offset: u32,
         limit: u32,
-    ) -> PaymentPage {
+    ) -> AgreementPage {
         if limit == 0 || limit > MAX_PAGE_SIZE {
-            panic_with_error!(&env, ContractError::InvalidPage);
+            panic_with_error!(env, BelayError::InvalidPage);
         }
         env.storage()
             .instance()
             .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
 
-        let mut expense_ids = Vec::new(&env);
-        let mut next_offset = None;
-        let count_key = DataKey::TripExpenseCount(trip_id.clone());
+        let count_key = if as_client {
+            DataKey::ClientCount(account.clone())
+        } else {
+            DataKey::FreelancerCount(account.clone())
+        };
 
-        if let Some(count) = env.storage().persistent().get::<_, u32>(&count_key) {
-            env.storage().persistent().extend_ttl(
-                &count_key,
-                STORAGE_BUMP_THRESHOLD,
-                STORAGE_BUMP_AMOUNT,
-            );
+        let mut agreements = Vec::new(env);
+        let mut next_offset = None;
+
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        if count > 0 {
+            env.storage()
+                .persistent()
+                .extend_ttl(&count_key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+
             let end = offset.saturating_add(limit).min(count);
             let mut index = offset.min(count);
             while index < end {
-                let entry_key = DataKey::TripExpenseAt(trip_id.clone(), index);
-                if let Some(expense_id) =
-                    env.storage().persistent().get::<_, String>(&entry_key)
-                {
-                    env.storage().persistent().extend_ttl(
-                        &entry_key,
-                        STORAGE_BUMP_THRESHOLD,
-                        STORAGE_BUMP_AMOUNT,
-                    );
-                    let marker_key =
-                        DataKey::TripExpenseIndex(trip_id.clone(), expense_id.clone());
-                    if env.storage().persistent().has(&marker_key) {
-                        env.storage().persistent().extend_ttl(
-                            &marker_key,
-                            STORAGE_BUMP_THRESHOLD,
-                            STORAGE_BUMP_AMOUNT,
-                        );
+                let at_key = if as_client {
+                    DataKey::ClientAt(account.clone(), index)
+                } else {
+                    DataKey::FreelancerAt(account.clone(), index)
+                };
+                if let Some(id) = env.storage().persistent().get::<_, String>(&at_key) {
+                    env.storage()
+                        .persistent()
+                        .extend_ttl(&at_key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+                    if let Some(agreement) =
+                        env.storage().persistent().get::<_, Agreement>(&DataKey::Agreement(id))
+                    {
+                        agreements.push_back(agreement);
                     }
-                    expense_ids.push_back(expense_id);
                 }
                 index += 1;
             }
             if end < count {
                 next_offset = Some(end);
             }
-        } else {
-            // Read-only compatibility for v2 trips. The next payment write
-            // converts this vector once and removes it.
-            let legacy_key = DataKey::TripExpenseIds(trip_id.clone());
-            if let Some(legacy_expenses) =
-                env.storage().persistent().get::<_, Vec<String>>(&legacy_key)
-            {
-                env.storage().persistent().extend_ttl(
-                    &legacy_key,
-                    STORAGE_BUMP_THRESHOLD,
-                    STORAGE_BUMP_AMOUNT,
-                );
-                let count = legacy_expenses.len();
-                let end = offset.saturating_add(limit).min(count);
-                let mut index = offset.min(count);
-                while index < end {
-                    if let Some(expense_id) = legacy_expenses.get(index) {
-                        expense_ids.push_back(expense_id);
-                    }
-                    index += 1;
-                }
-                if end < count {
-                    next_offset = Some(end);
-                }
-            }
         }
 
-        let mut payments = Vec::new(&env);
-        for expense_id in expense_ids.iter() {
-            let key = DataKey::ExpensePayments(trip_id.clone(), expense_id.clone());
-            let expense_payments: Vec<PaymentRecord> = env
-                .storage()
-                .persistent()
-                .get(&key)
-                .unwrap_or_else(|| Vec::new(&env));
-
-            // The index and the per-expense entries expire independently, so
-            // renew each one we actually touched rather than assuming the index
-            // outliving them means they survived too.
-            if env.storage().persistent().has(&key) {
-                env.storage().persistent().extend_ttl(
-                    &key,
-                    STORAGE_BUMP_THRESHOLD,
-                    STORAGE_BUMP_AMOUNT,
-                );
-            }
-
-            for payment in expense_payments.iter() {
-                let cleared_key =
-                    DataKey::ClearedPayment(expense_id.clone(), payment.member.clone());
-                let voided = env.storage().persistent().has(&cleared_key);
-
-                payments.push_back(PaymentRecord { voided, ..payment });
-            }
-        }
-
-        PaymentPage {
-            payments,
-            next_offset,
-        }
+        AgreementPage { agreements, next_offset }
     }
 
-    /// Checking a member's paid status also renews the record.
-    ///
-    /// Without this a settled share that is only ever read -- the common case
-    /// once a trip winds down -- could be archived, and the UI would then show
-    /// an already-settled share as unpaid.
-    pub fn is_paid(env: Env, expense_id: String, member: Address) -> bool {
-        env.storage()
-            .instance()
-            .extend_ttl(STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
-        let key = DataKey::ExpensePaid(expense_id, member);
-        let paid = env.storage().persistent().has(&key);
+    fn milestone_at(_env: &Env, milestones: &Vec<Milestone>, index: u32) -> Milestone {
+        milestones
+            .get(index)
+            .unwrap_or_else(|| panic_with_error!(_env, BelayError::MilestoneNotFound))
+    }
 
-        if paid {
+    fn read_agreement(env: &Env, agreement_id: &String) -> Agreement {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Agreement(agreement_id.clone()))
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::AgreementNotFound))
+    }
+
+    fn write_agreement(env: &Env, agreement: &Agreement) {
+        let key = DataKey::Agreement(agreement.id.clone());
+        env.storage().persistent().set(&key, agreement);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+    }
+
+    fn read_milestones(env: &Env, agreement_id: &String) -> Vec<Milestone> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Milestones(agreement_id.clone()))
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    fn write_milestones(env: &Env, agreement_id: &String, milestones: &Vec<Milestone>) {
+        let key = DataKey::Milestones(agreement_id.clone());
+        env.storage().persistent().set(&key, milestones);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
+    }
+
+    fn bump_agreement(env: &Env, agreement: &Agreement) {
+        let key = DataKey::Agreement(agreement.id.clone());
+        if env.storage().persistent().has(&key) {
             env.storage()
                 .persistent()
                 .extend_ttl(&key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
         }
-
-        paid
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::pool::{SettlementPoolContract, SettlementPoolContractClient};
-    use soroban_sdk::{
-        testutils::{Address as _, Ledger as _, MockAuth, MockAuthInvoke},
-        Address, Env, IntoVal, String,
-    };
-
-    macro_rules! setup {
-        ($env:ident, $client:ident, $pool_client:ident) => {
-            setup!($env, $client, $pool_client, _settlement_contract_id);
-        };
-        ($env:ident, $client:ident, $pool_client:ident, $contract_id:ident) => {
-            let $env = Env::default();
-            $env.mock_all_auths();
-            let $contract_id = $env.register_contract(None, SettleXContract);
-            let pool_contract_id = $env.register_contract(None, SettlementPoolContract);
-            let $client = SettleXContractClient::new(&$env, &$contract_id);
-            let $pool_client = SettlementPoolContractClient::new(&$env, &pool_contract_id);
-
-            let admin = Address::generate(&$env);
-            let settlement_address = $contract_id.clone();
-            let pool_address = pool_contract_id.clone();
-
-            $pool_client.init_pool(&admin, &settlement_address);
-            $client.init(&admin, &pool_address);
-        };
     }
 
-    /// End-to-end proof that the pool's settlement-contract check does not break
-    /// the legitimate path, verified WITHOUT `mock_all_auths()`.
-    ///
-    /// The member authorizes `record_payment`; the nested pool `withdraw` is
-    /// authorized for the settlement contract by the host, because a contract
-    /// making a sub-invocation authorizes itself from the invocation stack.
-    // ── Escape hatch for the permanent paid-flag lock ────────────────────
-
-    /// The griefing scenario: a bogus record for (expense_id, member) makes the
-    /// legitimate one impossible forever. `clear_paid` has to break that.
-    #[test]
-    fn test_clear_paid_unblocks_a_griefed_expense() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-grief");
-        let expense_id = String::from_str(&env, "exp-grief");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        let bogus_hash = String::from_str(&env, "bogus000000");
-        let real_hash = String::from_str(&env, "real1234567");
-
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        // Bogus entry lands first and locks the pair.
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &1_i128, &bogus_hash);
-        assert!(client.is_paid(&expense_id, &member));
-
-        // Before the fix there was no way past this point.
-        client.clear_paid(&expense_id, &member);
-        assert!(!client.is_paid(&expense_id, &member));
-
-        // The real payment can now be recorded.
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member, &4_000_000_i128, &real_hash,
-        );
-        assert!(client.is_paid(&expense_id, &member));
-
-        // History is preserved rather than rewritten — both attempts remain
-        // visible for audit.
-        let payments = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(payments.len(), 2);
-        assert_eq!(payments.get(1).unwrap().tx_hash, real_hash);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_clear_paid_rejects_unknown_entry() {
-        setup!(env, client, _pool_client);
-        let member = Address::generate(&env);
-        client.clear_paid(&String::from_str(&env, "never-recorded"), &member);
-    }
-
-    /// `clear_paid` is admin-gated: anyone else clearing flags would let a
-    /// member wipe their own record and replay it.
-    #[test]
-    #[should_panic]
-    fn test_clear_paid_requires_admin_auth() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        let trip_id = String::from_str(&env, "trip-auth");
-        let expense_id = String::from_str(&env, "exp-auth");
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash1234567"),
-        );
-
-        // Only the member authorizes — not the admin.
-        env.set_auths(&[]);
-        env.mock_auths(&[MockAuth {
-            address: &member,
-            invoke: &MockAuthInvoke {
-                contract: &settlement_contract_id,
-                fn_name: "clear_paid",
-                args: (expense_id.clone(), member.clone()).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
-        client.clear_paid(&expense_id, &member);
-    }
-
-    // ── Voiding: a cleared record must not read as legitimate ─────────────
-
-    /// After an admin clears a bogus flag, the record stays in history but is
-    /// marked repudiated rather than presented as a real payment.
-    #[test]
-    fn test_cleared_payment_is_marked_voided_in_history() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-void");
-        let expense_id = String::from_str(&env, "exp-void");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        pool_client.deposit(&member, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "bogus-hash"),
-        );
-
-        let before = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(before.len(), 1);
-        assert!(!before.get(0).unwrap().voided);
-
-        client.clear_paid(&expense_id, &member);
-
-        let after = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        // The audit trail is preserved ...
-        assert_eq!(after.len(), 1, "cleared records stay in history");
-        // ... but no longer reads as a legitimate payment.
-        assert!(
-            after.get(0).unwrap().voided,
-            "a repudiated record must not be presented as legitimate",
-        );
-    }
-
-    /// Clearing one member's flag must not void another member's payment.
-    #[test]
-    fn test_voiding_is_scoped_to_the_cleared_member() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-scope");
-        let expense_id = String::from_str(&env, "exp-scope");
-        let payer = Address::generate(&env);
-        let member_a = Address::generate(&env);
-        let member_b = Address::generate(&env);
-
-        pool_client.deposit(&member_a, &10_000_000_i128);
-        pool_client.deposit(&member_b, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member_a,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash-a"),
-        );
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member_b,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash-b"),
-        );
-
-        client.clear_paid(&expense_id, &member_a);
-
-        let payments = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(payments.len(), 2);
-        for p in payments.iter() {
-            if p.member == member_a {
-                assert!(p.voided, "the cleared member's record should be voided");
-            } else {
-                assert!(!p.voided, "another member's record must be untouched");
-            }
-        }
-    }
-
-    /// Re-recording after a clear is the whole point of the escape hatch, so
-    /// the replacement must not inherit the old repudiation.
-    #[test]
-    fn test_rerecording_after_clear_is_not_voided() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-redo");
-        let expense_id = String::from_str(&env, "exp-redo");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        pool_client.deposit(&member, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "bogus-hash"),
-        );
-        client.clear_paid(&expense_id, &member);
-
-        // The real payment is now recorded.
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "real-hash"),
-        );
-
-        let payments = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(payments.len(), 2, "both attempts stay in the audit trail");
-        // Neither reads as voided: the marker was consumed by the re-record, so
-        // the legitimate replacement stands on its own.
-        for p in payments.iter() {
-            assert!(
-                !p.voided,
-                "a re-recorded payment must not inherit the cleared marker",
-            );
-        }
-        assert!(client.is_paid(&expense_id, &member));
-    }
-
-    // ── Attestor: the hook that makes a record mean something ─────────────
-
-    /// With no attestor the record is self-attested, and says so.
-    #[test]
-    fn test_records_are_self_attested_by_default() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-selfatt");
-        let expense_id = String::from_str(&env, "exp-selfatt");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        pool_client.deposit(&member, &10_000_000_i128);
-        assert!(client.get_attestor().is_none());
-
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "unverified1"),
-        );
-
-        let rec = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.get(0).unwrap();
-        assert!(
-            !rec.attested,
-            "a record nothing verified must not claim to be attested",
-        );
-    }
-
-    /// Once an attestor is configured it must co-sign, and the record is marked
-    /// attested. Uses real auth so the requirement is actually exercised.
-    #[test]
-    fn test_attested_record_requires_and_records_attestor() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        let attestor = Address::generate(&env);
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-        client.set_attestor(&attestor);
-        pool_client.deposit(&member, &10_000_000_i128);
-        assert_eq!(client.get_attestor(), Some(attestor.clone()));
-
-        let trip_id = String::from_str(&env, "trip-att");
-        let expense_id = String::from_str(&env, "exp-att");
-        let tx_hash = String::from_str(&env, "verified123");
-        let amount = 4_000_000_i128;
-        let args: soroban_sdk::Vec<soroban_sdk::Val> = (
-            trip_id.clone(), expense_id.clone(), payer.clone(),
-            member.clone(), amount, tx_hash.clone(),
-        ).into_val(&env);
-
-        env.set_auths(&[]);
-        env.mock_auths(&[
-            MockAuth {
-                address: &member,
-                invoke: &MockAuthInvoke {
-                    contract: &settlement_contract_id,
-                    fn_name: "record_payment",
-                    args: args.clone(),
-                    sub_invokes: &[],
-                },
-            },
-            MockAuth {
-                address: &attestor,
-                invoke: &MockAuthInvoke {
-                    contract: &settlement_contract_id,
-                    fn_name: "record_payment",
-                    args: args.clone(),
-                    sub_invokes: &[],
-                },
-            },
-        ]);
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &amount, &tx_hash);
-
-        let rec = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.get(0).unwrap();
-        assert!(rec.attested, "an attestor-cosigned record must be marked attested");
-    }
-
-    /// The member alone cannot write a record once an attestor is required.
-    #[test]
-    #[should_panic]
-    fn test_member_alone_cannot_record_when_attestor_set() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        let attestor = Address::generate(&env);
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-        client.set_attestor(&attestor);
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        let trip_id = String::from_str(&env, "trip-noatt");
-        let expense_id = String::from_str(&env, "exp-noatt");
-        let tx_hash = String::from_str(&env, "forged12345");
-        let amount = 4_000_000_i128;
-
-        env.set_auths(&[]);
-        env.mock_auths(&[MockAuth {
-            address: &member,
-            invoke: &MockAuthInvoke {
-                contract: &settlement_contract_id,
-                fn_name: "record_payment",
-                args: (
-                    trip_id.clone(), expense_id.clone(), payer.clone(),
-                    member.clone(), amount, tx_hash.clone(),
-                ).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &amount, &tx_hash);
-    }
-
-    #[test]
-    fn test_migrate_from_v1_to_v2_updates_version() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-
-        env.as_contract(&settlement_contract_id, || {
-            env.storage().instance().set(&DataKey::Version, &1_u32);
-        });
-
-        client.migrate();
-        let stored_version: u32 = env
-            .as_contract(&settlement_contract_id, || env.storage().instance().get(&DataKey::Version).unwrap());
-        assert_eq!(stored_version, 2_u32);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_set_attestor_requires_admin() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        let attacker = Address::generate(&env);
-
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-
-        env.set_auths(&[]);
-        env.mock_auths(&[MockAuth {
-            address: &attacker,
-            invoke: &MockAuthInvoke {
-                contract: &settlement_contract_id,
-                fn_name: "set_attestor",
-                args: (attacker.clone(),).into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
-        client.set_attestor(&attacker);
-    }
-
-    #[test]
-    fn test_clear_attestor_returns_to_self_attested() {
-        setup!(env, client, pool_client);
-
-        let attestor = Address::generate(&env);
-        client.set_attestor(&attestor);
-        assert_eq!(client.get_attestor(), Some(attestor));
-
-        client.clear_attestor();
-        assert!(client.get_attestor().is_none());
-
-        // Recording works again with member auth alone.
-        let trip_id = String::from_str(&env, "trip-cleared");
-        let expense_id = String::from_str(&env, "exp-cleared");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        pool_client.deposit(&member, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "afterclear1"),
-        );
-        assert!(!client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.get(0).unwrap().attested);
-    }
-
-    #[test]
-    fn test_record_payment_works_under_real_auth() {
-        let env = Env::default();
-        let settlement_contract_id = env.register_contract(None, SettleXContract);
-        let pool_contract_id = env.register_contract(None, SettlementPoolContract);
-        let client = SettleXContractClient::new(&env, &settlement_contract_id);
-        let pool_client = SettlementPoolContractClient::new(&env, &pool_contract_id);
-
-        let admin = Address::generate(&env);
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-
-        env.mock_all_auths();
-        pool_client.init_pool(&admin, &settlement_contract_id);
-        client.init(&admin, &pool_contract_id);
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        let trip_id = String::from_str(&env, "trip-real-auth");
-        let expense_id = String::from_str(&env, "exp-real-auth");
-        let tx_hash = String::from_str(&env, "abc123def456");
-        let amount = 4_000_000_i128;
-
-        // Only the member signs; the settlement contract's authorization of the
-        // nested withdraw has to come from the invocation stack itself.
-        env.set_auths(&[]);
-        env.mock_auths(&[MockAuth {
-            address: &member,
-            invoke: &MockAuthInvoke {
-                contract: &settlement_contract_id,
-                fn_name: "record_payment",
-                args: (
-                    trip_id.clone(),
-                    expense_id.clone(),
-                    payer.clone(),
-                    member.clone(),
-                    amount,
-                    tx_hash.clone(),
-                )
-                    .into_val(&env),
-                sub_invokes: &[],
-            },
-        }]);
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &amount, &tx_hash);
-
-        assert!(client.is_paid(&expense_id, &member));
-    }
-
-    #[test]
-    fn test_record_and_query() {
-        setup!(env, client, pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-123");
-        let expense_id = String::from_str(&env, "exp-456");
-        let payer      = Address::generate(&env);
-        let member     = Address::generate(&env);
-        let tx_hash    = String::from_str(&env, "abc123def456");
-
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        assert!(!client.is_paid(&expense_id, &member));
-        assert_eq!(client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(), 0);
-
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &10_000_000_i128,
-            &tx_hash,
-        );
-
-        assert!(client.is_paid(&expense_id, &member));
-
-        let payments = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(payments.len(), 1);
-        let rec = payments.get(0).unwrap();
-        assert_eq!(rec.amount,     10_000_000_i128);
-        assert_eq!(rec.expense_id, expense_id);
-    }
-
-    #[test]
-    fn test_multiple_members() {
-        setup!(env, client, pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-multi");
-        let expense_id = String::from_str(&env, "exp-multi");
-        let payer      = Address::generate(&env);
-        let member_a   = Address::generate(&env);
-        let member_b   = Address::generate(&env);
-        let tx_a       = String::from_str(&env, "hash_a");
-        let tx_b       = String::from_str(&env, "hash_b");
-
-        pool_client.deposit(&member_a, &5_000_000_i128);
-        pool_client.deposit(&member_b, &7_500_000_i128);
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member_a, &5_000_000_i128, &tx_a);
-        client.record_payment(&trip_id, &expense_id, &payer, &member_b, &7_500_000_i128, &tx_b);
-
-        assert!(client.is_paid(&expense_id, &member_a));
-        assert!(client.is_paid(&expense_id, &member_b));
-        assert_eq!(client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(), 2);
-    }
-
-    #[test]
-    fn test_multiple_expenses_same_trip() {
-        setup!(env, client, pool_client);
-
-        let trip_id  = String::from_str(&env, "trip-abc");
-        let exp_1    = String::from_str(&env, "exp-001");
-        let exp_2    = String::from_str(&env, "exp-002");
-        let payer    = Address::generate(&env);
-        let member   = Address::generate(&env);
-        let tx_1     = String::from_str(&env, "tx_001");
-        let tx_2     = String::from_str(&env, "tx_002");
-
-        pool_client.deposit(&member, &7_500_000_i128);
-
-        client.record_payment(&trip_id, &exp_1, &payer, &member, &3_000_000_i128, &tx_1);
-        client.record_payment(&trip_id, &exp_2, &payer, &member, &4_500_000_i128, &tx_2);
-
-        assert!(client.is_paid(&exp_1, &member));
-        assert!(client.is_paid(&exp_2, &member));
-        assert_eq!(client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(), 2);
-    }
-
-    #[test]
-    fn test_trip_payment_history_is_partitioned_by_expense() {
-        setup!(env, client, pool_client);
-
-        let trip_id  = String::from_str(&env, "trip-partition");
-        let exp_1    = String::from_str(&env, "exp-001");
-        let exp_2    = String::from_str(&env, "exp-002");
-        let payer    = Address::generate(&env);
-        let member   = Address::generate(&env);
-        let tx_1     = String::from_str(&env, "tx_001");
-        let tx_2     = String::from_str(&env, "tx_002");
-
-        pool_client.deposit(&member, &7_500_000_i128);
-
-        client.record_payment(&trip_id, &exp_1, &payer, &member, &3_000_000_i128, &tx_1);
-        client.record_payment(&trip_id, &exp_2, &payer, &member, &4_500_000_i128, &tx_2);
-
-        let payments = client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments;
-        assert_eq!(payments.len(), 2);
-
-        let mut seen_expenses = soroban_sdk::Vec::new(&env);
-        for payment in payments.iter() {
-            assert!(payment.expense_id == exp_1 || payment.expense_id == exp_2);
-            seen_expenses.push_back(payment.expense_id.clone());
-        }
-
-        assert_eq!(seen_expenses.len(), 2);
-        assert!((seen_expenses.get(0).unwrap() == exp_1 && seen_expenses.get(1).unwrap() == exp_2)
-            || (seen_expenses.get(0).unwrap() == exp_2 && seen_expenses.get(1).unwrap() == exp_1));
-    }
-
-    #[test]
-    fn test_trip_expense_index_uses_bounded_entries_and_pages() {
-        setup!(env, client, pool_client, settlement_contract_id);
-
-        let trip_id = String::from_str(&env, "trip-paged");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        pool_client.deposit(&member, &30_000_000_i128);
-
-        for index in 0..3 {
-            let expense_id = String::from_str(
-                &env,
-                if index == 0 {
-                    "expense-a"
-                } else if index == 1 {
-                    "expense-b"
-                } else {
-                    "expense-c"
-                },
-            );
-            let tx_hash = String::from_str(
-                &env,
-                if index == 0 {
-                    "hash-a"
-                } else if index == 1 {
-                    "hash-b"
-                } else {
-                    "hash-c"
-                },
-            );
-            client.record_payment(
-                &trip_id,
-                &expense_id,
-                &payer,
-                &member,
-                &1_000_000_i128,
-                &tx_hash,
-            );
-        }
-
-        let first = client.get_payments(&trip_id, &0_u32, &2_u32);
-        assert_eq!(first.payments.len(), 2);
-        assert_eq!(first.next_offset, Some(2));
-
-        let second = client.get_payments(&trip_id, &first.next_offset.unwrap(), &2_u32);
-        assert_eq!(second.payments.len(), 1);
-        assert_eq!(second.next_offset, None);
-
-        env.as_contract(&settlement_contract_id, || {
-            let count: u32 = env
-                .storage()
-                .persistent()
-                .get(&DataKey::TripExpenseCount(trip_id.clone()))
-                .unwrap();
-            assert_eq!(count, 3);
-            assert!(!env
-                .storage()
-                .persistent()
-                .has(&DataKey::TripExpenseIds(trip_id.clone())));
-            for index in 0..count {
-                assert!(env
-                    .storage()
-                    .persistent()
-                    .has(&DataKey::TripExpenseAt(trip_id.clone(), index)));
-            }
-        });
-    }
-
-    #[test]
-    fn test_multiple_payments_for_one_expense_create_one_index_entry() {
-        setup!(env, client, pool_client, settlement_contract_id);
-
-        let trip_id = String::from_str(&env, "trip-one-shard");
-        let expense_id = String::from_str(&env, "expense-shared");
-        let payer = Address::generate(&env);
-        let member_a = Address::generate(&env);
-        let member_b = Address::generate(&env);
-        pool_client.deposit(&member_a, &10_000_000_i128);
-        pool_client.deposit(&member_b, &10_000_000_i128);
-
-        client.record_payment(
-            &trip_id,
-            &expense_id,
-            &payer,
-            &member_a,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash-member-a"),
-        );
-        client.record_payment(
-            &trip_id,
-            &expense_id,
-            &payer,
-            &member_b,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash-member-b"),
-        );
-
-        let page = client.get_payments(&trip_id, &0_u32, &1_u32);
-        assert_eq!(page.payments.len(), 2);
-        assert_eq!(page.next_offset, None);
-
-        env.as_contract(&settlement_contract_id, || {
-            let count: u32 = env
-                .storage()
-                .persistent()
-                .get(&DataKey::TripExpenseCount(trip_id.clone()))
-                .unwrap();
-            assert_eq!(count, 1);
-        });
-    }
-
-    #[test]
-    fn test_record_payment_migrates_legacy_trip_index_once() {
-        setup!(env, client, pool_client, settlement_contract_id);
-
-        let trip_id = String::from_str(&env, "trip-legacy");
-        let old_expense = String::from_str(&env, "expense-old");
-        let new_expense = String::from_str(&env, "expense-new");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        pool_client.deposit(&member, &10_000_000_i128);
-
-        env.as_contract(&settlement_contract_id, || {
-            let mut legacy = Vec::new(&env);
-            legacy.push_back(old_expense.clone());
+    fn bump_milestones(env: &Env, agreement_id: &String) {
+        let key = DataKey::Milestones(agreement_id.clone());
+        if env.storage().persistent().has(&key) {
             env.storage()
                 .persistent()
-                .set(&DataKey::TripExpenseIds(trip_id.clone()), &legacy);
-        });
-
-        client.record_payment(
-            &trip_id,
-            &new_expense,
-            &payer,
-            &member,
-            &1_000_000_i128,
-            &String::from_str(&env, "hash-new"),
-        );
-
-        env.as_contract(&settlement_contract_id, || {
-            let count: u32 = env
-                .storage()
-                .persistent()
-                .get(&DataKey::TripExpenseCount(trip_id.clone()))
-                .unwrap();
-            assert_eq!(count, 2);
-            assert!(!env
-                .storage()
-                .persistent()
-                .has(&DataKey::TripExpenseIds(trip_id.clone())));
-        });
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_get_payments_rejects_unbounded_page_size() {
-        setup!(env, client, _pool_client);
-        let trip_id = String::from_str(&env, "trip-page-too-large");
-        client.get_payments(&trip_id, &0_u32, &(MAX_PAGE_SIZE + 1));
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_duplicate_payment_rejected() {
-        setup!(env, client, pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-dup");
-        let expense_id = String::from_str(&env, "exp-dup");
-        let payer      = Address::generate(&env);
-        let member     = Address::generate(&env);
-        let tx_hash    = String::from_str(&env, "hash_dup");
-
-        pool_client.deposit(&member, &1_000_000_i128);
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &1_000_000_i128, &tx_hash);
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &1_000_000_i128, &tx_hash);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_zero_amount_rejected() {
-        setup!(env, client, _pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-zero");
-        let expense_id = String::from_str(&env, "exp-zero");
-        let payer      = Address::generate(&env);
-        let member     = Address::generate(&env);
-        let tx_hash    = String::from_str(&env, "hash_zero");
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &0_i128, &tx_hash);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_negative_amount_rejected() {
-        setup!(env, client, _pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-neg");
-        let expense_id = String::from_str(&env, "exp-neg");
-        let payer      = Address::generate(&env);
-        let member     = Address::generate(&env);
-        let tx_hash    = String::from_str(&env, "hash_neg");
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &-1_i128, &tx_hash);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_empty_tx_hash_rejected() {
-        setup!(env, client, _pool_client);
-
-        let trip_id    = String::from_str(&env, "trip-empty-tx");
-        let expense_id = String::from_str(&env, "exp-empty-tx");
-        let payer      = Address::generate(&env);
-        let member     = Address::generate(&env);
-        let tx_hash    = String::from_str(&env, "");
-
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &1_i128, &tx_hash);
-    }
-
-    /// Advances the ledger sequence, leaving TTL settings intact.
-    fn advance_ledgers(env: &Env, by: u32) {
-        env.ledger().with_mut(|li| {
-            li.sequence_number += by;
-        });
-    }
-
-    #[test]
-    fn test_get_payments_extends_ttl_so_a_read_only_trip_survives() {
-        setup!(env, client, pool_client);
-
-        // Keep entries alive only as long as a bump grants, so an un-renewed
-        // key is genuinely gone by the time we look for it.
-        env.ledger().with_mut(|li| {
-            li.min_persistent_entry_ttl = 1;
-            li.max_entry_ttl = STORAGE_BUMP_AMOUNT + 1;
-        });
-
-        let trip_id = String::from_str(&env, "trip-read-only");
-        let expense_id = String::from_str(&env, "exp-read-only");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        let tx_hash = String::from_str(&env, "hash-read-only");
-
-        pool_client.deposit(&member, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &10_000_000_i128,
-            &tx_hash,
-        );
-
-        // A trip written once and then only ever read: step most of the way to
-        // expiry, read, and repeat. Each read has to carry the data forward.
-        for _ in 0..3 {
-            advance_ledgers(&env, STORAGE_BUMP_AMOUNT - 1);
-            assert_eq!(
-                client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(),
-                1,
-                "history should survive as long as it keeps being read",
-            );
+                .extend_ttl(&key, STORAGE_BUMP_THRESHOLD, STORAGE_BUMP_AMOUNT);
         }
     }
 
-    #[test]
-    fn test_is_paid_extends_ttl_so_a_settled_share_stays_settled() {
-        setup!(env, client, pool_client);
+    fn vault_client(env: &Env) -> EscrowVaultClient<'_> {
+        EscrowVaultClient::new(env, &Self::read_vault(env))
+    }
 
-        env.ledger().with_mut(|li| {
-            li.min_persistent_entry_ttl = 1;
-            li.max_entry_ttl = STORAGE_BUMP_AMOUNT + 1;
-        });
+    fn read_vault(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Vault)
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::NotInitialized))
+    }
 
-        let trip_id = String::from_str(&env, "trip-settled");
-        let expense_id = String::from_str(&env, "exp-settled");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        let tx_hash = String::from_str(&env, "hash-settled");
+    fn read_version(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::Version)
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::NotInitialized))
+    }
 
-        pool_client.deposit(&member, &10_000_000_i128);
-        client.record_payment(
-            &trip_id, &expense_id, &payer, &member,
-            &10_000_000_i128,
-            &tx_hash,
-        );
-
-        // An already-settled share must not read back as unpaid just because
-        // nobody wrote to it again.
-        for _ in 0..3 {
-            advance_ledgers(&env, STORAGE_BUMP_AMOUNT - 1);
-            assert!(
-                client.is_paid(&expense_id, &member),
-                "a settled share should stay settled while it is being read",
-            );
+    fn require_current_version(env: &Env) {
+        if Self::read_version(env) != CONTRACT_VERSION {
+            panic_with_error!(env, BelayError::VersionMismatch);
         }
     }
 
-    #[test]
-    fn test_is_paid_does_not_trap_on_a_missing_entry() {
-        setup!(env, client, pool_client);
-        let _ = &pool_client;
-
-        // extend_ttl traps on an absent key, so the unpaid path must not bump.
-        let expense_id = String::from_str(&env, "exp-never-paid");
-        let member = Address::generate(&env);
-        assert!(!client.is_paid(&expense_id, &member));
+    fn require_admin(env: &Env) -> Address {
+        Self::require_current_version(env);
+        Self::require_admin_at_supported_version(env)
     }
 
-    #[test]
-    fn test_get_payments_does_not_trap_on_an_unknown_trip() {
-        setup!(env, client, pool_client);
-        let _ = &pool_client;
-
-        let trip_id = String::from_str(&env, "trip-that-never-existed");
-        assert_eq!(client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(), 0);
+    fn require_admin_at_supported_version(env: &Env) -> Address {
+        let version = Self::read_version(env);
+        if version < MIN_MIGRATABLE_VERSION || version > CONTRACT_VERSION {
+            panic_with_error!(env, BelayError::VersionMismatch);
+        }
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, BelayError::NotInitialized));
+        admin.require_auth();
+        admin
     }
 
-    #[test]
-    fn test_is_paid_unknown_returns_false() {
-        setup!(env, client, _pool_client);
-
-        let expense_id = String::from_str(&env, "exp-never");
-        let member     = Address::generate(&env);
-
-        assert!(!client.is_paid(&expense_id, &member));
+    fn validate_amount(env: &Env, amount: i128) {
+        if amount <= 0 {
+            panic_with_error!(env, BelayError::InvalidAmount);
+        }
+        if amount > MAX_AMOUNT_STROOPS {
+            panic_with_error!(env, BelayError::AmountTooLarge);
+        }
     }
 
-    #[test]
-    fn test_get_payments_unknown_trip_is_empty() {
-        setup!(env, client, _pool_client);
-
-        let trip_id = String::from_str(&env, "trip-ghost");
-        assert_eq!(client.get_payments(&trip_id, &0_u32, &MAX_PAGE_SIZE).payments.len(), 0);
+    fn validate_id(env: &Env, id: &String) {
+        if id.is_empty() {
+            panic_with_error!(env, BelayError::EmptyId);
+        }
+        if id.len() > MAX_ID_LEN {
+            panic_with_error!(env, BelayError::IdTooLong);
+        }
     }
 
-
-    #[test]
-    #[should_panic]
-    fn test_payer_cannot_equal_member() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-role");
-        let expense_id = String::from_str(&env, "exp-role");
-        let actor = Address::generate(&env);
-        let tx_hash = String::from_str(&env, "hash-role");
-
-        pool_client.deposit(&actor, &1_000_000_i128);
-        client.record_payment(&trip_id, &expense_id, &actor, &actor, &1_000_000_i128, &tx_hash);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_amount_too_large_rejected() {
-        setup!(env, client, pool_client);
-
-        let trip_id = String::from_str(&env, "trip-big");
-        let expense_id = String::from_str(&env, "exp-big");
-        let payer = Address::generate(&env);
-        let member = Address::generate(&env);
-        let tx_hash = String::from_str(&env, "hash-big");
-
-        pool_client.deposit(&member, &(MAX_AMOUNT_STROOPS + 1));
-        client.record_payment(&trip_id, &expense_id, &payer, &member, &(MAX_AMOUNT_STROOPS + 1), &tx_hash);
+    fn validate_bounded(
+        env: &Env,
+        value: &String,
+        max: u32,
+        empty_error: BelayError,
+        too_long_error: BelayError,
+    ) {
+        if value.is_empty() {
+            panic_with_error!(env, empty_error);
+        }
+        if value.len() > max {
+            panic_with_error!(env, too_long_error);
+        }
     }
 }
+
+// The test suite lives in a separate module to keep this file readable.
+#[cfg(test)]
+mod test;

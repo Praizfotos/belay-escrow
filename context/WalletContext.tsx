@@ -194,18 +194,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [publicKey, toastInfo]);
 
   useEffect(() => {
-    if (!publicKey) return;
+    // Both keys are needed: the network check needs the selected wallet id,
+    // and the address reconcile compares against the stored public key.
+    if (!publicKey || !selectedWalletId) return;
 
-      clearStoredWallet(publicKey);
-      setPublicKey(null);
-      setBalance(null);
-      setNetwork(null);
-      setNetworkStatus("idle");
-      setSelectedWalletId(null);
-      toastInfo(
-        "Wallet account changed",
-        "Please reconnect to continue with your current account."
-      );
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    // Extensions emit no account/network event, so both are polled: the
+    // network is re-read on every tick (a network switch mid-session must not
+    // leave the app signing against the wrong network), and the address is
+    // reconciled so a silent account switch cannot leave the UI acting as the
+    // old account.
+    const tick = () => {
+      void checkWalletNetwork(selectedWalletId);
+      void reconcile();
+      timeoutId = setTimeout(tick, 5_000);
     };
 
     timeoutId = setTimeout(tick, 5_000);
@@ -291,7 +294,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           net ? "Wrong Stellar network" : "Wallet network unavailable",
           net
             ? `Switch your wallet to ${stellarNetworkLabel(STELLAR_NETWORK)} before making a payment.`
-            : "SettleX could not verify this wallet's network. Payments remain blocked.",
+            : "Belay could not verify this wallet's network. Payments remain blocked.",
         );
       }
 

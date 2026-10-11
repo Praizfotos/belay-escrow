@@ -41,11 +41,14 @@ export async function pollTransactionByHash(
   while (Date.now() - startTime < maxWaitMs) {
     try {
       if (typeof server?.transactions === "function" && typeof server.transactions().transaction === "function") {
-        const txRecord = await server.transactions().transaction(txHash);
+        // `transaction(hash)` returns a CallBuilder; the record only exists
+        // once the builder is awaited via `.call()`. Reading properties off
+        // the builder itself would see `undefined` and report false positives.
+        const txRecord = await server.transactions().transaction(txHash).call();
         if (txRecord && txRecord.successful !== false) {
           return {
             hash: txRecord.hash || txHash,
-            ledger: (txRecord as any).ledger_attr ?? (txRecord as any).ledger ?? 0,
+            ledger: txRecord.ledger_attr ?? 0,
             successful: true,
           };
         } else if (txRecord && txRecord.successful === false) {
