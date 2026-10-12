@@ -51,12 +51,6 @@ const config = {
       lines: 70,
       statements: 70,
     },
-    "./components/landing/": {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
-    },
   },
 };
 
