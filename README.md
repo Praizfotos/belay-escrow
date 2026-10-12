@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SnigdhaMandal/Belay/actions/workflows/ci.yml">
-    <img src="https://github.com/SnigdhaMandal/Belay/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline" />
+  <a href="https://github.com/Praizfotos/belay-escrow/actions/workflows/ci.yml">
+    <img src="https://github.com/Praizfotos/belay-escrow/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline" />
   </a>
   <img src="https://img.shields.io/badge/Network-Stellar%20Testnet-7B68EE?style=flat-square" alt="Stellar Testnet" />
   <img src="https://img.shields.io/badge/Contracts-Soroban%20(Rust)-blue?style=flat-square&logo=rust" alt="Soroban Contracts" />
@@ -224,7 +224,7 @@ This section maps the required submission checklist to concrete proof in this re
 
 | Requirement | Proof |
 | --- | --- |
-| Public GitHub repository | https://github.com/SnigdhaMandal/Belay |
+| Public GitHub repository | https://github.com/Praizfotos/belay-escrow |
 | README with complete documentation | This file plus links in [Final Documentation Package](#final-documentation-package) |
 | Minimum 8+ meaningful commits | Git history — verify the count before submission |
 | Screenshot or badge: CI/CD pipeline running | CI badge at the top of this README (GitHub Actions `ci.yml`) |
@@ -246,8 +246,8 @@ This section maps the required submission checklist to concrete proof in this re
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/SnigdhaMandal/Belay.git
-cd Belay
+git clone https://github.com/Praizfotos/belay-escrow.git
+cd belay-escrow
 ```
 
 ### 2. Install dependencies
