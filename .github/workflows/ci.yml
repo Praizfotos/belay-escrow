@@ -73,6 +73,7 @@ jobs:
         run: |
           docker run --name pg-lint -e POSTGRES_PASSWORD=postgres -d postgres
           sleep 5
+          docker exec -i pg-lint psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;"
           docker exec -i pg-lint psql -U postgres -v ON_ERROR_STOP=1 -f - < supabase-setup.sql
 
       - name: Test with coverage gate
