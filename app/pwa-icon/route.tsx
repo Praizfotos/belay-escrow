@@ -4,8 +4,6 @@ import { ImageResponse } from "next/og";
 //   /pwa-icon?size=192        → "any" purpose
 //   /pwa-icon?size=512&mask=1 → "maskable" (extra padding so nothing is clipped)
 // Rendering on-demand keeps real PNGs out of the repo while staying Lighthouse-clean.
-export const contentType = "image/png";
-
 const clampSize = (raw: string | null): number => {
   const n = Number(raw);
   if (!Number.isFinite(n)) return 512;
@@ -45,6 +43,7 @@ export function GET(request: Request) {
       width: size,
       height: size,
       headers: {
+        "Content-Type": "image/png",
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     },
