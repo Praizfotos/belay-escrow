@@ -15,7 +15,7 @@ vault contract when the client approves.
 
 ## 1. Install
 ```bash
-git clone https://github.com/SnigdhaMandal/Belay.git
+git clone https://github.com/Praizfotos/belay-escrow.git
 cd Belay
 npm install
 ```
