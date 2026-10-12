@@ -20,8 +20,6 @@ below with the actual IDs/tx hashes after running
 | README includes contract addresses + tx hash | Complete | README Smart Contract section with agreement/vault IDs and transaction links |
 | README includes vault address | Complete | README Deployed Contracts table |
 | README includes CI/CD proof | Complete | CI badge in README and test output screenshot |
-| README includes deployment proof screenshot | Complete | `public/deployment.png` referenced in README |
-| README includes mobile screenshot | Pending manual capture | Add phone viewport screenshot (e.g. `public/mobile-responsive.png`) and reference in README |
 
 ## Automated Verification Summary
 

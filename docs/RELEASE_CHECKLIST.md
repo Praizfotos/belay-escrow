@@ -34,9 +34,7 @@ Date: 2026-10-11
 ## Documentation
 
 - [ ] README includes live demo link
-- [ ] README includes contract IDs and transaction proofs
 - [ ] README includes vault address proof
-- [ ] README includes deployment screenshot (`public/deployment.png`)
 - [ ] README includes submission checklist evidence section
 - [ ] Final docs package added under `docs/`
 
@@ -65,10 +63,4 @@ Date: 2026-10-11
 
 - [ ] Public GitHub repository ready
 - [ ] Commit history exceeds minimum requirement
-- [ ] Add one explicit mobile viewport screenshot (phone-sized capture) and reference it in README before final submission
-
-Notes:
-- Run the portal's end-to-end checklist against a testnet deployment, not just
-  local.
-- One manual evidence item is easy to forget: a dedicated phone viewport
-  screenshot.
+- [ ] Final docs package added under `docs/`

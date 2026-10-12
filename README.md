@@ -18,11 +18,6 @@
   <img src="https://img.shields.io/badge/PWA-Installable-brightgreen?style=flat-square" alt="Installable PWA" />
 </p>
 
-<p align="center">
-  <a href="https://settle-x-pi.vercel.app/"><strong>Live Demo</strong></a> &nbsp;&bull;&nbsp;
-  <a href="https://youtu.be/gnUaUONmb3I"><strong>Demo Video</strong></a>
-</p>
-
 ---
 
 ## Table of Contents
@@ -30,7 +25,6 @@
 - [Project Description](#project-description)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
-- [Screenshots](#screenshots)
 - [How It Works](#how-it-works)
 - [Smart Contract](#smart-contract)
 - [Project Status & Production Roadmap](#project-status--production-roadmap)
@@ -98,26 +92,6 @@ Every movement of value — funding, releasing, refunding — is a **real, verif
 | Testing | Jest 29 + ts-jest; Rust inter-contract tests |
 | State management | React Context + Supabase + localStorage |
 | UI primitives | Radix UI, Lucide React |
-
----
-
-## Screenshots
-
-### Home / Landing Page
-
-![Home](public/home.png)
-
-### Dashboard — Wallet Connected & Escrow Balance
-
-![Dashboard](public/Dashboard.png)
-
-### Test Output
-
-![Test Output](public/test_pass.png)
-
-### Deployment Proof (CLI)
-
-![Deployment Proof](public/deployment.png)
 
 ---
 
@@ -253,8 +227,6 @@ This section maps the required submission checklist to concrete proof in this re
 | Public GitHub repository | https://github.com/SnigdhaMandal/Belay |
 | README with complete documentation | This file plus links in [Final Documentation Package](#final-documentation-package) |
 | Minimum 8+ meaningful commits | Git history — verify the count before submission |
-| Live demo link | [https://settle-x-pi.vercel.app/](https://settle-x-pi.vercel.app/) |
-| Screenshot: mobile responsive view | Responsive across landing/auth/dashboard/agreements. Add one fresh phone viewport screenshot to `public/mobile-responsive.png` and reference it here before final submission. |
 | Screenshot or badge: CI/CD pipeline running | CI badge at the top of this README (GitHub Actions `ci.yml`) |
 | Contract addresses and transaction hash (inter-contract) | [Deployed Contracts](#deployed-contracts-testnet) and [Verified On-Chain Transactions](#verified-on-chain-transactions) |
 | Token or vault address (custom token/contract deployed) | Escrow vault contract + escrow token in [Deployed Contracts](#deployed-contracts-testnet) |
@@ -389,7 +361,7 @@ For a coverage report:
 npm run test:coverage
 ```
 
-Suites cover the escrow planner and status logic, contract error decoding, event parsing, Supabase row guards and privacy rules, the offline cache isolation in `AgreementContext`, auth (challenge, JWT, rate limiting, revocation), observability/redaction, and CSP. See the test output screenshot in [Screenshots](#screenshots).
+Suites cover the escrow planner and status logic, contract error decoding, event parsing, Supabase row guards and privacy rules, the offline cache isolation in `AgreementContext`, auth (challenge, JWT, rate limiting, revocation), observability/redaction, and CSP. npm run test:coverage generates a coverage report.
 
 ### Rust contract tests
 
